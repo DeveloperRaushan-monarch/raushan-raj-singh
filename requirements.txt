@@ -1,0 +1,13 @@
+# PIXELTRUTH runtime and test dependencies.
+# Keep this file as the single dependency source of truth.
+# No versions are pinned yet; select and verify compatible versions during an authorized development phase.
+
+streamlit
+Pillow
+ExifRead
+opencv-python-headless
+numpy
+pandas
+plotly
+reportlab
+pytest

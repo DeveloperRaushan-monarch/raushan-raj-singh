@@ -1,0 +1,31 @@
+# Python environments and bytecode
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Test and coverage output
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+
+# User data and generated output
+uploads/
+reports/
+output/
+*.tmp
+
+# Keep the sample directory itself, but do not commit image data by default.
+sample_images/*
+!sample_images/.gitkeep
+
+# Operating system files
+.DS_Store
+Thumbs.db

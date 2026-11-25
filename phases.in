@@ -1,0 +1,83 @@
+# PIXELTRUTH Development Phases
+
+## Status convention
+
+Use NOT STARTED, IN PROGRESS, BLOCKED, or COMPLETE. A phase is COMPLETE only when its exit criteria are met, required tests pass, documentation is updated, and the user receives a report. Do not start a phase until its explicit START PHASE command is received.
+
+## Current status
+
+- Phase 0 — COMPLETE (2026-11-25). The user explicitly authorized a greenfield foundation. Python 3.11.0 was confirmed; the existing project-local environment was verified; the requested scaffold, documentation, starter Streamlit entry point, README, license notice, and gitignore were created; and local main/develop branches were prepared without a remote. No forensic features were implemented. See memory.in for environment details.
+- Phase 1 — NOT STARTED.
+- Phase 2 — NOT STARTED.
+- Phase 3 — NOT STARTED.
+- Phase 4 — NOT STARTED.
+- Phase 5 — NOT STARTED.
+
+## Phase 0 — Inspection and preparation
+
+Authorization command: START PHASE 0
+
+Tasks:
+- Inspect the actual repository structure, Git status/branches, and all project documents.
+- Check Python 3.11 availability and inspect requirements.txt without installing packages.
+- Review existing source and test structure, if present.
+- Identify missing files, dependency conflicts, architectural fit, and technical risks.
+- Prepare a scoped implementation plan and report.
+
+Exit criteria:
+- Correct project checkout is available and its status is understood.
+- Required documents and source of truth are read and reconciled.
+- Proposed plan and risks are reported; unresolved decisions are identified.
+- No implementation starts unless separately authorized by the relevant phase command.
+
+## Phase 1 — Image inspection foundation
+
+Authorization command: START PHASE 1
+
+Tasks: upload validation; content-based format detection; safe decode and resource limits; image properties; metadata extraction/statuses; SHA-256 over original bytes.
+
+Exit criteria: supported formats are validated and tested; malformed, corrupt, unsupported, and oversized inputs return clear outcomes; properties and metadata statuses are accurate; hash matches original bytes; UI state is connected without permanent storage by default.
+
+## Phase 2 — Metadata intelligence
+
+Authorization command: START PHASE 2
+
+Tasks: metadata integrity and consistency rules; structured findings; gated GPS and session clearing; two-image comparison and supported similarity measures.
+
+Exit criteria: rules are deterministic and explained; missing metadata alone does not imply manipulation; GPS is hidden until requested and excluded from report defaults; comparison distinguishes hashes from visual similarity; tests cover edge cases.
+
+## Phase 3 — Forensic analysis
+
+Authorization command: START PHASE 3
+
+Tasks: documented JPEG-only ELA; RGB histograms; deterministic assessment engine; findings and explanation presentation.
+
+Exit criteria: unsupported formats do not receive ELA; analyses expose method and limitations; assessment is one of the three allowed labels with documented rules; no fake scores or authenticity claims; tests cover applicability and rules.
+
+## Phase 4 — Reporting
+
+Authorization command: START PHASE 4
+
+Tasks: PDF report content/layout; selected sections; report ID/date; privacy redaction and GPS exclusion; report generation validation.
+
+Exit criteria: report reflects actual analysis and user-selected sections; GPS is excluded by default; limitations/methods/hash are present; no unintended local paths or sensitive values leak; tests validate generated report content.
+
+## Phase 5 — Integration and quality assurance
+
+Authorization command: START PHASE 5
+
+Tasks: integration; macOS/Windows checks; privacy and security review; performance and resource checks; bug fixes; documentation and demonstration readiness.
+
+Exit criteria: end-to-end supported workflows function; relevant test suite passes; platform-specific issues are resolved or documented; privacy defaults are verified; documentation and known limitations are current; final report is delivered.
+
+## Phase completion record
+
+Append one entry after each completed phase:
+
+- Phase: [number and name]
+- Date:
+- Summary:
+- Tests and results:
+- Documentation updated:
+- Remaining issues:
+- User report delivered:
