@@ -39,6 +39,15 @@ def test_marks_out_of_range_orientation_invalid():
     assert orientation.status is MetadataStatus.INVALID
 
 
+def test_accepts_exifread_orientation_labels_for_valid_values():
+    for orientation_value in (1, 6):
+        exif = Image.Exif()
+        exif[274] = orientation_value
+        fields = extract_metadata(make_jpeg(exif), "JPEG")
+        orientation = next(field for field in fields if field.key == "orientation")
+        assert orientation.status is MetadataStatus.PRESENT
+
+
 def test_non_exif_format_marks_fields_unsupported():
     fields = extract_metadata(b"unused bytes", "BMP")
     make = next(field for field in fields if field.key == "make")

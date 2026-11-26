@@ -36,6 +36,23 @@ FIELD_SPECS: tuple[tuple[str, str, tuple[str, ...], str], ...] = (
 )
 
 EXIF_CAPABLE_FORMATS = {"JPEG", "PNG", "WEBP", "TIFF"}
+VALID_ORIENTATION_LABELS = {
+    "horizontal (normal)",
+    "mirror horizontal",
+    "mirrored horizontal",
+    "rotate 180",
+    "rotated 180",
+    "mirror vertical",
+    "mirrored vertical",
+    "mirror horizontal and rotate 270 cw",
+    "mirrored horizontal then rotated 90 ccw",
+    "rotate 90 cw",
+    "rotated 90 cw",
+    "mirror horizontal and rotate 90 cw",
+    "mirrored horizontal then rotated 90 cw",
+    "rotate 270 cw",
+    "rotated 90 ccw",
+}
 
 
 def _clean_value(value: Any) -> str | None:
@@ -74,7 +91,9 @@ def _is_valid(value: str, kind: str) -> bool:
         return False
     if kind == "orientation":
         parsed = _parse_fraction(value)
-        return parsed is not None and parsed.is_integer() and 1 <= parsed <= 8
+        if parsed is not None:
+            return parsed.is_integer() and 1 <= parsed <= 8
+        return value.strip().lower() in VALID_ORIENTATION_LABELS
     if kind == "positive_integer":
         parsed = _parse_fraction(value)
         return parsed is not None and parsed.is_integer() and parsed > 0
