@@ -717,6 +717,17 @@ details.meta-record > summary:hover {
   flex-shrink: 0;
 }
 
+details.meta-record > summary .meta-record-name::before {
+  content: "▸ ";
+  color: var(--secondary);
+  font-family: var(--font-mono);
+}
+
+details.meta-record[open] > summary .meta-record-name::before {
+  content: "▾ ";
+  color: var(--primary);
+}
+
 .meta-record-val {
   font-family: var(--font-mono);
   font-size: 12px;

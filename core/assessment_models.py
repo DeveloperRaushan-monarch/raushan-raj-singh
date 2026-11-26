@@ -6,13 +6,14 @@ from dataclasses import dataclass
 from enum import Enum
 
 
-RULE_SET_VERSION = "PT-EA/1.0.0"
+RULE_SET_VERSION = "PT-EA/1.1.0"
 
 
 class CoverageState(str, Enum):
     EVALUATED_WITH_FINDING = "EVALUATED_WITH_FINDING"
     EVALUATED_WITHOUT_FINDING = "EVALUATED_WITHOUT_FINDING"
     NOT_EVALUABLE = "NOT_EVALUABLE"
+    NOT_APPLICABLE = "NOT_APPLICABLE"
 
 
 class Applicability(str, Enum):

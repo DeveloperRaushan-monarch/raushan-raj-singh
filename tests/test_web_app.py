@@ -361,6 +361,8 @@ def test_static_frontend_serves_all_8_stitch_screens_and_is_fully_offline(live_s
 
     # Dynamic Metadata Explorer controls present without unsafe raw metadata innerHTML
     for ctrl_id in (
+        'id="meta-image-summary-card"',
+        'id="meta-image-summary-grid"',
         'id="meta-coverage-card"',
         'id="meta-search"',
         'id="meta-filter-source"',
@@ -917,5 +919,106 @@ def test_metadata_export_csv_empty_inventory(live_server):
         "is_unknown",
         "is_hierarchical",
         "limitations",
+        "source_engine",
+        "source_container",
+        "group",
+        "unit",
+        "extraction_status",
+        "discovered_by",
+        "engine_disagreement",
     ]]
+
+
+def test_gps_reveal_clear_reset_on_new_upload_and_session_isolation(live_server):
+    server, _ = live_server
+    gps_jpg = _make_jpeg(with_gps=True)
+    plain_png = _make_png()
+
+    with patch("server.scan_image_bytes", return_value=_mock_scan_result()):
+        st1, _, b1 = _request(
+            server,
+            "POST",
+            "/api/inspect",
+            body=gps_jpg,
+            headers={"Content-Length": str(len(gps_jpg)), "X-Filename": "gps.jpg"},
+        )
+    assert st1 == 200
+    sid1 = json.loads(b1)["session_id"]
+
+    # Reveal GPS in session 1
+    st_rev, _, b_rev = _request(
+        server,
+        "POST",
+        "/api/gps/reveal",
+        headers={"X-Pixeltruth-Session": sid1},
+    )
+    assert st_rev == 200
+    rev = json.loads(b_rev)
+    assert rev["status"] == "Present"
+    assert rev["gps_state"] == "GPS_COORDINATES_AVAILABLE"
+    assert "GPSLatitude" in rev["raw_tags"]
+
+    # Second session cannot see session 1's GPS
+    st_s2, _, b_s2 = _request(server, "POST", "/api/session")
+    assert st_s2 == 200
+    sid2 = json.loads(b_s2)["session_id"]
+    st_s2_rev, _, _ = _request(
+        server,
+        "POST",
+        "/api/gps/reveal",
+        headers={"X-Pixeltruth-Session": sid2},
+    )
+    assert st_s2_rev == 400
+
+    # Uploading a new image in session 1 resets GPS state
+    with patch("server.scan_image_bytes", return_value=_mock_scan_result()):
+        st2, _, _ = _request(
+            server,
+            "POST",
+            "/api/inspect",
+            body=plain_png,
+            headers={"Content-Length": str(len(plain_png)), "X-Filename": "plain.png", "X-Pixeltruth-Session": sid1},
+        )
+    assert st2 == 200
+    session1 = server.session_store.get_session(sid1)
+    assert session1 is not None and session1.gps_result is None
+
+
+def test_metadata_record_consistency_across_api_and_exports(live_server):
+    import csv
+    from io import StringIO
+
+    server, _ = live_server
+    raw = _make_jpeg(make="Canon")
+    with patch("server.scan_image_bytes", return_value=_mock_scan_result()):
+        st, _, body = _request(
+            server,
+            "POST",
+            "/api/inspect",
+            body=raw,
+            headers={"Content-Length": str(len(raw)), "X-Filename": "consistency.jpg"},
+        )
+    assert st == 200
+    payload = json.loads(body)
+    sid = payload["session_id"]
+
+    api_make = next(r for r in payload["inventory"]["records"] if r["tag_name"] == "Make")
+    assert api_make["source"] == "EXIF"
+    assert api_make["tag_id"] == "0x010F"
+    assert api_make["path"] == ["EXIF", "Image", "Make"]
+    assert api_make["raw_value"] == "Canon"
+
+    st_j, _, bj = _request(server, "GET", "/api/metadata/export?format=json", headers={"X-Pixeltruth-Session": sid})
+    assert st_j == 200
+    exp_make = next(r for r in json.loads(bj)["records"] if r["tag_name"] == "Make")
+    assert exp_make == api_make
+
+    st_c, _, bc = _request(server, "GET", "/api/metadata/export?format=csv", headers={"X-Pixeltruth-Session": sid})
+    assert st_c == 200
+    csv_rows = list(csv.reader(StringIO(bc.decode("utf-8"))))
+    csv_make = next(r for r in csv_rows[1:] if r[3] == "Make")
+    assert csv_make[1] == "EXIF"
+    assert csv_make[4] == "0x010F"
+    assert csv_make[6] == "EXIF / Image / Make"
+    assert csv_make[10] == "Canon"
 

@@ -288,7 +288,24 @@ def generate_pdf_report(
             )
 
         if resolved_assessment.evaluations:
-            story.append(_p("Rule evaluation coverage", styles["cell_bold"]))
+            total_evals = len(resolved_assessment.evaluations)
+            app_evals = sum(1 for e in resolved_assessment.evaluations if e.applicability == "APPLICABLE")
+            eval_ok = sum(
+                1 for e in resolved_assessment.evaluations
+                if e.coverage_state in {"EVALUATED_WITH_FINDING", "EVALUATED_WITHOUT_FINDING"}
+            )
+            na_evals = sum(1 for e in resolved_assessment.evaluations if e.applicability == "NOT_APPLICABLE")
+            ne_evals = sum(
+                1 for e in resolved_assessment.evaluations
+                if e.coverage_state == "NOT_EVALUABLE" and e.applicability != "NOT_APPLICABLE"
+            )
+            story.append(
+                _p(
+                    f"Rule evaluation coverage: {total_evals} total · {app_evals} applicable · "
+                    f"{eval_ok} evaluated · {na_evals} not applicable · {ne_evals} not evaluated",
+                    styles["cell_bold"],
+                )
+            )
             eval_rows = [
                 [
                     _p("Evaluation ID", styles["cell_bold"]),

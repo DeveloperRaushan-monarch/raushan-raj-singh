@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 from io import BytesIO
+from pathlib import PurePosixPath
 import struct
+import time
 from typing import Any
 import xml.etree.ElementTree as ET
 
 import exifread
 from PIL import ExifTags, Image, ImageCms
+
+from core.exiftool_engine import run_exiftool
+from core.format_capabilities import get_format_capability, identify_file_signature
+from core.metadata_merger import merge_metadata_records
 
 from core.iptc import (
     IPTC_FIELD_SPECS,
@@ -185,6 +191,8 @@ def _normalize_value(value: object, printable: str | None = None) -> tuple[Any, 
         return value, printable if printable is not None else str(value), "float", None
 
     if isinstance(value, (list, tuple)):
+        if len(value) == 1 and isinstance(value[0], int) and not isinstance(value[0], bool):
+            return value[0], printable if printable is not None else str(value[0]), "integer", None
         if len(value) == 1 and _is_rational(value[0]) is not None:
             return _normalize_value(value[0], printable=printable)
         ratios = [_is_rational(item) for item in value]
@@ -204,57 +212,162 @@ def _normalize_value(value: object, printable: str | None = None) -> tuple[Any, 
     return text, printable if printable is not None else text, "string", None
 
 
+_FORMAT_DESCRIPTIONS: dict[str, str] = {
+    "JPEG": "JPEG (Joint Photographic Experts Group)",
+    "PNG": "PNG (Portable Network Graphics)",
+    "WEBP": "WebP (Google WebP Image)",
+    "TIFF": "TIFF (Tagged Image File Format)",
+    "GIF": "GIF (Graphics Interchange Format)",
+    "BMP": "BMP (Windows Bitmap)",
+}
+
+_SIGNATURE_DESCRIPTIONS: dict[str, str] = {
+    "JPEG": "JPEG SOI marker (FF D8 FF)",
+    "PNG": "PNG signature (89 50 4E 47 0D 0A 1A 0A)",
+    "WEBP": "RIFF/WEBP container header",
+    "TIFF": "TIFF byte-order header (II* / MM*)",
+    "GIF": "GIF87a / GIF89a header",
+    "BMP": "BMP 'BM' header (42 4D)",
+}
+
+
+def _format_size_human(size_bytes: int) -> str:
+    if size_bytes >= 1024 * 1024:
+        return f"{size_bytes:,} bytes ({size_bytes / (1024 * 1024):.2f} MB)"
+    return f"{size_bytes:,} bytes ({size_bytes / 1024:.2f} KB)"
+
+
 def _extract_container(
     file_bytes: bytes, properties: ImageProperties
 ) -> tuple[list[MetadataRecord], MetadataExtractionStage]:
     records: list[MetadataRecord] = []
     warnings: list[MetadataExtractionWarning] = []
     magic = file_bytes[:16].hex(" ").upper()
+    fmt_upper = properties.image_format.upper()
 
-    file_items = [
-        ("FileSignature", "File signature (magic bytes)", magic, "string"),
-        ("DetectedFormat", "Detected format", properties.image_format, "string"),
-        ("MimeType", "MIME type", properties.mime_type, "string"),
-        ("FileSizeBytes", "File size (bytes)", properties.file_size_bytes, "integer"),
-        ("ExtensionMismatch", "Extension mismatch", properties.extension_mismatch, "boolean"),
+    file_ext = PurePosixPath((properties.filename or "").replace("\\", "/")).suffix.lstrip(".").lower() or "None"
+    header_preview_bytes = file_bytes[:32]
+    header_preview_hex = header_preview_bytes.hex(" ").upper()
+
+    file_items: list[tuple[str, str, str, Any, str, str]] = [
+        (
+            "FileSignature",
+            "File signature (magic bytes)",
+            "File Inspector",
+            magic,
+            f"{_SIGNATURE_DESCRIPTIONS.get(fmt_upper, 'Binary file header')} — {magic}",
+            "string",
+        ),
+        (
+            "RawHeaderPreview",
+            "Raw header preview",
+            "File Inspector",
+            header_preview_hex,
+            f"First {len(header_preview_bytes)} bytes (hex): {header_preview_hex}",
+            "string",
+        ),
+        (
+            "DetectedFormat",
+            "Detected format",
+            "Image Decoder",
+            properties.image_format,
+            _FORMAT_DESCRIPTIONS.get(fmt_upper, properties.image_format),
+            "string",
+        ),
+        (
+            "FileExtension",
+            "File extension",
+            "File Inspector",
+            file_ext,
+            file_ext,
+            "string",
+        ),
+        (
+            "MimeType",
+            "MIME type",
+            "File Inspector",
+            properties.mime_type,
+            properties.mime_type,
+            "string",
+        ),
+        (
+            "FileSizeBytes",
+            "File size (bytes)",
+            "File Inspector",
+            properties.file_size_bytes,
+            _format_size_human(properties.file_size_bytes),
+            "integer",
+        ),
+        (
+            "ExtensionMismatch",
+            "Extension mismatch",
+            "File Inspector",
+            properties.extension_mismatch,
+            (
+                "Yes (filename extension does not match detected format)"
+                if properties.extension_mismatch
+                else "No (extension matches detected format)"
+            ),
+            "boolean",
+        ),
     ]
-    for name, label, val, dtype in file_items:
+    for name, label, src, raw_val, interp_val, dtype in file_items:
         records.append(
             MetadataRecord(
                 record_id=f"container:file:{name}",
-                source="Container",
+                source=src,
                 category="File Information",
                 tag_name=label,
                 namespace="File",
                 path=("File", name),
-                raw_value=val,
-                interpreted_value=str(val),
+                raw_value=raw_val,
+                interpreted_value=interp_val,
                 data_type=dtype,
                 status=MetadataStatus.PRESENT,
             )
         )
 
-    img_items = [
-        ("Width", "Image width (px)", properties.width, "integer"),
-        ("Height", "Image height (px)", properties.height, "integer"),
-        ("ColorMode", "Colour mode", properties.color_mode, "string"),
-        ("FrameCount", "Frame count", properties.frame_count, "integer"),
-        ("HasTransparency", "Transparency", properties.has_transparency, "boolean"),
-    ]
-    if properties.bit_depth_per_channel is not None:
-        img_items.append(("BitDepth", "Bit depth per channel", properties.bit_depth_per_channel, "integer"))
+    channel_count: int | None = None
+    try:
+        with Image.open(BytesIO(file_bytes)) as probe:
+            channel_count = len(probe.getbands())
+    except (OSError, ValueError, TypeError):
+        channel_count = None
 
-    for name, label, val, dtype in img_items:
+    img_items: list[tuple[str, str, Any, str, str]] = [
+        ("Dimensions", "Image dimensions", f"{properties.width} × {properties.height}", f"{properties.width} × {properties.height} px", "string"),
+        ("Width", "Image width (px)", properties.width, f"{properties.width} px", "integer"),
+        ("Height", "Image height (px)", properties.height, f"{properties.height} px", "integer"),
+        ("Megapixels", "Megapixels", round(properties.megapixels, 4), f"{properties.megapixels:.2f} MP", "float"),
+        ("AspectRatio", "Aspect ratio", round(properties.aspect_ratio, 4), f"{properties.aspect_ratio:.3f}:1", "float"),
+        ("ColorMode", "Colour mode", properties.color_mode, properties.color_mode, "string"),
+        ("FrameCount", "Frame count", properties.frame_count, f"{properties.frame_count} frame(s)", "integer"),
+        ("HasTransparency", "Transparency", properties.has_transparency, "Yes" if properties.has_transparency else "No", "boolean"),
+    ]
+    if channel_count is not None:
+        img_items.insert(5, ("ColourChannels", "Colour channels", channel_count, f"{channel_count} channel(s)", "integer"))
+    if properties.bit_depth_per_channel is not None:
+        img_items.append(
+            ("BitDepth", "Bit depth per channel", properties.bit_depth_per_channel, f"{properties.bit_depth_per_channel} bits per channel", "integer")
+        )
+    elif fmt_upper == "PNG" and len(file_bytes) >= 26 and file_bytes[:8] == b"\x89PNG\r\n\x1a\n" and file_bytes[12:16] == b"IHDR":
+        ihdr_depth = file_bytes[24]
+        if ihdr_depth in {1, 2, 4, 8, 16}:
+            img_items.append(
+                ("BitDepth", "Bit depth per channel", ihdr_depth, f"{ihdr_depth} bits per channel (PNG IHDR)", "integer")
+            )
+
+    for name, label, val, interp_val, dtype in img_items:
         records.append(
             MetadataRecord(
                 record_id=f"container:image:{name}",
-                source="Container",
+                source="Image Decoder",
                 category="Image Information",
                 tag_name=label,
                 namespace="Container",
                 path=("Container", name),
                 raw_value=val,
-                interpreted_value=str(val),
+                interpreted_value=interp_val,
                 data_type=dtype,
                 status=MetadataStatus.PRESENT,
             )
@@ -269,15 +382,42 @@ def _extract_container(
                 if key_str.lower().startswith("raw profile type"):
                     continue
                 raw_v, interp_v, dtype_v, note_v = _normalize_value(val)
-                cat = "Software Information" if key_str.lower() == "software" else "Image Information"
+                lower_key = key_str.lower()
+                if lower_key == "dpi" and isinstance(val, (tuple, list)) and len(val) == 2:
+                    try:
+                        dx, dy = float(val[0]), float(val[1])
+                        interp_v = f"{dx:g} × {dy:g} DPI"
+                    except (TypeError, ValueError):
+                        pass
+                if fmt_upper == "JPEG" and (lower_key.startswith("jfif") or lower_key in {"progressive", "progression", "adobe", "adobe_transform"}):
+                    src_k = "JPEG Container"
+                    cat_k = "JPEG Structure"
+                    ns_k = "JPEG"
+                    sub_ns = "JFIF" if lower_key.startswith("jfif") else "Structure"
+                    path_k = ("JPEG", sub_ns, key_str)
+                elif fmt_upper == "PNG":
+                    src_k = "PNG Chunk"
+                    cat_k = "Software Information" if lower_key == "software" else "PNG Structure"
+                    ns_k = "PNG"
+                    path_k = ("PNG", "Info", key_str)
+                elif fmt_upper == "WEBP":
+                    src_k = "WebP RIFF Chunk"
+                    cat_k = "WebP Structure"
+                    ns_k = "WebP"
+                    path_k = ("WebP", "Info", key_str)
+                else:
+                    src_k = "Image Decoder"
+                    cat_k = "Software Information" if lower_key == "software" else "Image Information"
+                    ns_k = "ContainerInfo"
+                    path_k = ("ContainerInfo", key_str)
                 records.append(
                     MetadataRecord(
                         record_id=f"container:info:{key_str}",
-                        source="Container",
-                        category=cat,
+                        source=src_k,
+                        category=cat_k,
                         tag_name=key_str,
-                        namespace="ContainerInfo",
-                        path=("ContainerInfo", key_str),
+                        namespace=ns_k,
+                        path=path_k,
                         raw_value=raw_v,
                         interpreted_value=interp_v,
                         data_type=dtype_v,
@@ -287,6 +427,343 @@ def _extract_container(
                 )
     except (OSError, ValueError, TypeError) as exc:
         warnings.append(MetadataExtractionWarning("container", "CONTAINER_INFO_PARTIAL", str(exc)))
+
+    # Format-specific structural chunk inspection (bounded, read-only)
+    fmt = properties.image_format.upper()
+    if fmt == "PNG" and file_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+        pos = 8
+        png_chunks: list[str] = []
+        while pos + 8 <= len(file_bytes) and len(png_chunks) < 64:
+            chunk_len = struct.unpack(">I", file_bytes[pos : pos + 4])[0]
+            chunk_type = file_bytes[pos + 4 : pos + 8].decode("ascii", errors="replace")
+            png_chunks.append(f"{chunk_type} ({chunk_len}B)")
+            if chunk_type == "IEND" or pos + 12 + chunk_len > len(file_bytes):
+                break
+            pos += 12 + chunk_len
+        if png_chunks:
+            records.append(
+                MetadataRecord(
+                    record_id="container:png:chunks",
+                    source="PNG Chunk",
+                    category="PNG Structure",
+                    tag_name="PNG chunks",
+                    namespace="PNG",
+                    path=("PNG", "Chunks"),
+                    raw_value=png_chunks,
+                    interpreted_value=", ".join(png_chunks),
+                    data_type="array",
+                    status=MetadataStatus.PRESENT,
+                )
+            )
+    elif fmt == "WEBP" and len(file_bytes) >= 12 and file_bytes[:4] == b"RIFF" and file_bytes[8:12] == b"WEBP":
+        pos = 12
+        webp_chunks: list[str] = []
+        while pos + 8 <= len(file_bytes) and len(webp_chunks) < 64:
+            chunk_id = file_bytes[pos : pos + 4].decode("ascii", errors="replace")
+            chunk_len = struct.unpack("<I", file_bytes[pos + 4 : pos + 8])[0]
+            webp_chunks.append(f"{chunk_id.strip()} ({chunk_len}B)")
+            padded = chunk_len + (chunk_len % 2)
+            if pos + 8 + padded > len(file_bytes):
+                break
+            pos += 8 + padded
+        if webp_chunks:
+            records.append(
+                MetadataRecord(
+                    record_id="container:webp:chunks",
+                    source="WebP RIFF Chunk",
+                    category="WebP Structure",
+                    tag_name="WebP RIFF chunks",
+                    namespace="WebP",
+                    path=("WebP", "RIFFChunks"),
+                    raw_value=webp_chunks,
+                    interpreted_value=", ".join(webp_chunks),
+                    data_type="array",
+                    status=MetadataStatus.PRESENT,
+                    source_engine="WebP Parser",
+                    source_container="RIFF/WebP",
+                )
+            )
+    elif fmt == "GIF" and file_bytes.startswith((b"GIF87a", b"GIF89a")) and len(file_bytes) >= 13:
+        gif_ver = file_bytes[:6].decode("ascii")
+        lsd_w, lsd_h, packed, bg_idx, px_aspect = struct.unpack("<HHBBB", file_bytes[6:13])
+        gct_flag = bool(packed & 0x80)
+        gct_size = 2 ** ((packed & 0x07) + 1) if gct_flag else 0
+        for g_key, g_label, g_raw, g_interp, g_dtype in (
+            ("Header", "GIF header version", gif_ver, gif_ver, "string"),
+            ("LogicalScreen", "Logical screen dimensions", f"{lsd_w} × {lsd_h}", f"{lsd_w} × {lsd_h} px", "string"),
+            ("GlobalColorTable", "Global colour table", gct_size, f"Present ({gct_size} colours)" if gct_flag else "Absent", "integer"),
+            ("BackgroundColorIndex", "Background colour index", bg_idx, str(bg_idx), "integer"),
+        ):
+            records.append(
+                MetadataRecord(
+                    record_id=f"container:gif:{g_key}",
+                    source="GIF Container",
+                    category="GIF / Animation",
+                    tag_name=g_label,
+                    namespace="GIF",
+                    path=("GIF", g_key),
+                    raw_value=g_raw,
+                    interpreted_value=g_interp,
+                    data_type=g_dtype,
+                    status=MetadataStatus.PRESENT,
+                    source_engine="GIF Parser",
+                    source_container="GIF Header",
+                )
+            )
+    elif fmt == "BMP" and file_bytes.startswith(b"BM") and len(file_bytes) >= 34:
+        bmp_file_size, _, _, data_offset, dib_size = struct.unpack("<IHHIi", file_bytes[2:18])
+        comp_code = struct.unpack("<I", file_bytes[30:34])[0] if dib_size >= 40 and len(file_bytes) >= 34 else None
+        comp_names = {0: "BI_RGB (Uncompressed)", 1: "BI_RLE8", 2: "BI_RLE4", 3: "BI_BITFIELDS"}
+        for b_key, b_label, b_raw, b_interp, b_dtype in (
+            ("DIBHeaderSize", "DIB header size", dib_size, f"{dib_size} bytes", "integer"),
+            ("PixelDataOffset", "Pixel data offset", data_offset, f"Byte {data_offset}", "integer"),
+        ):
+            records.append(
+                MetadataRecord(
+                    record_id=f"container:bmp:{b_key}",
+                    source="BMP Container",
+                    category="Other Container Metadata",
+                    tag_name=b_label,
+                    namespace="BMP",
+                    path=("BMP", b_key),
+                    raw_value=b_raw,
+                    interpreted_value=b_interp,
+                    data_type=b_dtype,
+                    status=MetadataStatus.PRESENT,
+                    source_engine="BMP Parser",
+                    source_container="BMP Header",
+                )
+            )
+        if comp_code is not None:
+            records.append(
+                MetadataRecord(
+                    record_id="container:bmp:Compression",
+                    source="BMP Container",
+                    category="Other Container Metadata",
+                    tag_name="BMP compression",
+                    namespace="BMP",
+                    path=("BMP", "Compression"),
+                    raw_value=comp_code,
+                    interpreted_value=comp_names.get(comp_code, f"Code {comp_code}"),
+                    data_type="integer",
+                    status=MetadataStatus.PRESENT,
+                    source_engine="BMP Parser",
+                    source_container="BMP DIB",
+                )
+            )
+    elif fmt == "TIFF" and file_bytes.startswith((b"II*\x00", b"MM\x00*")):
+        byte_order = "Little-endian (Intel II)" if file_bytes.startswith(b"II*\x00") else "Big-endian (Motorola MM)"
+        records.append(
+            MetadataRecord(
+                record_id="container:tiff:ByteOrder",
+                source="TIFF Container",
+                category="TIFF Structure",
+                tag_name="TIFF byte order",
+                namespace="TIFF",
+                path=("TIFF", "ByteOrder"),
+                raw_value=file_bytes[:2].decode("ascii"),
+                interpreted_value=byte_order,
+                data_type="string",
+                status=MetadataStatus.PRESENT,
+                source_engine="TIFF Parser",
+                source_container="TIFF Header",
+            )
+        )
+    elif fmt == "JPEG" and file_bytes.startswith(b"\xff\xd8"):
+        pos = 2
+        jpeg_segments: list[str] = []
+        sof_parsed = False
+        app0_parsed = False
+        _SOF_PROCESSES: dict[int, tuple[str, bool]] = {
+            0xC0: ("Baseline DCT, Huffman coding", False),
+            0xC1: ("Extended sequential DCT, Huffman coding", False),
+            0xC2: ("Progressive DCT, Huffman coding", True),
+            0xC3: ("Lossless (sequential), Huffman coding", False),
+            0xC5: ("Differential sequential DCT, Huffman coding", False),
+            0xC6: ("Differential progressive DCT, Huffman coding", True),
+            0xC7: ("Differential lossless, Huffman coding", False),
+            0xC9: ("Extended sequential DCT, arithmetic coding", False),
+            0xCA: ("Progressive DCT, arithmetic coding", True),
+            0xCB: ("Lossless (sequential), arithmetic coding", False),
+        }
+        while pos + 2 <= len(file_bytes) and len(jpeg_segments) < 64:
+            if file_bytes[pos] != 0xFF:
+                warnings.append(
+                    MetadataExtractionWarning(
+                        "container",
+                        "JPEG_SEGMENT_INVALID",
+                        "Unexpected byte before JPEG marker; segment stream may be malformed or truncated.",
+                    )
+                )
+                break
+            while pos < len(file_bytes) and file_bytes[pos] == 0xFF:
+                pos += 1
+            if pos >= len(file_bytes):
+                warnings.append(
+                    MetadataExtractionWarning("container", "JPEG_TRUNCATED", "JPEG marker stream ended unexpectedly.")
+                )
+                break
+            marker = file_bytes[pos]
+            pos += 1
+            if marker == 0xD9 or marker == 0xDA:  # EOI or SOS
+                jpeg_segments.append("SOS" if marker == 0xDA else "EOI")
+                break
+            if marker == 0x00 or (0xD0 <= marker <= 0xD7) or marker == 0x01:
+                continue
+            if pos + 2 > len(file_bytes):
+                warnings.append(
+                    MetadataExtractionWarning("container", "JPEG_TRUNCATED", "JPEG segment length header is truncated.")
+                )
+                break
+            seg_len = struct.unpack(">H", file_bytes[pos : pos + 2])[0]
+            if seg_len < 2 or pos + seg_len > len(file_bytes):
+                warnings.append(
+                    MetadataExtractionWarning("container", "JPEG_SEGMENT_INVALID", "JPEG segment length is invalid or truncated.")
+                )
+                break
+            payload = file_bytes[pos + 2 : pos + seg_len]
+
+            if 0xE0 <= marker <= 0xEF:
+                label = f"APP{marker - 0xE0}"
+            elif marker == 0xFE:
+                label = "COM"
+            elif marker in _SOF_PROCESSES:
+                label = f"SOF{marker - 0xC0}"
+            else:
+                label = f"0xFF{marker:02X}"
+            jpeg_segments.append(f"{label} ({len(payload)}B)")
+
+            # Parse APP0 JFIF header
+            if marker == 0xE0 and not app0_parsed and payload.startswith(b"JFIF\x00"):
+                app0_parsed = True
+                if len(payload) < 14:
+                    warnings.append(
+                        MetadataExtractionWarning("container", "JPEG_APP0_MALFORMED", "JPEG APP0 JFIF payload is truncated.")
+                    )
+                else:
+                    ver_maj, ver_min, unit, x_den, y_den, tw, th = struct.unpack(">BBBHHBB", payload[5:14])
+                    ver_str = f"{ver_maj}.{ver_min:02d}"
+                    unit_desc = {
+                        0: "None (aspect ratio only)",
+                        1: "Pixels per inch (DPI)",
+                        2: "Pixels per centimetre",
+                    }.get(unit, f"Unknown ({unit})")
+                    x_desc = f"{x_den} DPI" if unit == 1 else (f"{x_den} px/cm" if unit == 2 else f"{x_den} (aspect ratio)")
+                    y_desc = f"{y_den} DPI" if unit == 1 else (f"{y_den} px/cm" if unit == 2 else f"{y_den} (aspect ratio)")
+                    jfif_items = [
+                        ("JFIFVersion", "JFIF version", ver_str, ver_str, "string"),
+                        ("ResolutionUnit", "Resolution unit", unit, unit_desc, "integer"),
+                        ("XResolution", "X resolution", x_den, x_desc, "integer"),
+                        ("YResolution", "Y resolution", y_den, y_desc, "integer"),
+                    ]
+                    if tw > 0 or th > 0:
+                        jfif_items.append(("ThumbnailSize", "JFIF thumbnail dimensions", f"{tw} × {th}", f"{tw} × {th} px", "string"))
+                    for j_name, j_label, j_raw, j_interp, j_dtype in jfif_items:
+                        records.append(
+                            MetadataRecord(
+                                record_id=f"container:jpeg:jfif:{j_name}",
+                                source="JPEG Container",
+                                category="JPEG / JFIF Information",
+                                tag_name=j_label,
+                                namespace="JPEG",
+                                path=("JPEG Container", "APP0", j_name),
+                                raw_value=j_raw,
+                                interpreted_value=j_interp,
+                                data_type=j_dtype,
+                                status=MetadataStatus.PRESENT,
+                            )
+                        )
+
+            # Parse SOF frame header
+            if marker in _SOF_PROCESSES and not sof_parsed:
+                sof_parsed = True
+                enc_desc, is_prog = _SOF_PROCESSES[marker]
+                if len(payload) < 6:
+                    warnings.append(
+                        MetadataExtractionWarning("container", "JPEG_SOF_MALFORMED", "JPEG SOF frame header is truncated.")
+                    )
+                else:
+                    precision, sof_h, sof_w, num_comp = struct.unpack(">BHHB", payload[:6])
+                    if sof_h <= 0 or sof_w <= 0 or num_comp <= 0 or len(payload) < 6 + 3 * num_comp:
+                        warnings.append(
+                            MetadataExtractionWarning("container", "JPEG_SOF_MALFORMED", "JPEG SOF frame dimensions or component table are invalid.")
+                        )
+                    else:
+                        if (sof_w, sof_h) != (properties.width, properties.height):
+                            warnings.append(
+                                MetadataExtractionWarning(
+                                    "container",
+                                    "JPEG_SOF_DIMENSION_MISMATCH",
+                                    f"JPEG SOF dimensions ({sof_w}×{sof_h}) differ from decoded dimensions ({properties.width}×{properties.height}).",
+                                )
+                            )
+                        sampling_pairs: list[tuple[int, int]] = []
+                        comp_ids: list[int] = []
+                        for c_idx in range(num_comp):
+                            cid, hv, _qt = struct.unpack(">BBB", payload[6 + 3 * c_idx : 9 + 3 * c_idx])
+                            comp_ids.append(cid)
+                            sampling_pairs.append(((hv >> 4) & 0x0F, hv & 0x0F))
+
+                        sof_items: list[tuple[str, str, Any, str, str]] = [
+                            ("EncodingProcess", "Encoding process", f"SOF{marker - 0xC0} (0xFF{marker:02X})", enc_desc, "string"),
+                            ("Progressive", "Progressive encoding", is_prog, "Yes" if is_prog else "No (Baseline/Sequential)", "boolean"),
+                            ("Precision", "Bits per sample", precision, f"{precision} bits per sample", "integer"),
+                            ("ColorComponents", "Colour components", num_comp, f"{num_comp} component(s)", "integer"),
+                            ("SOFDimensions", "SOF frame dimensions", f"{sof_w} × {sof_h}", f"{sof_w} × {sof_h} px", "string"),
+                        ]
+                        if num_comp == 3 and len(sampling_pairs) == 3:
+                            (h1, v1), (h2, v2), (h3, v3) = sampling_pairs
+                            if h2 == 1 and v2 == 1 and h3 == 1 and v3 == 1:
+                                sub_map = {
+                                    (2, 2): "YCbCr 4:2:0 (2 2)",
+                                    (2, 1): "YCbCr 4:2:2 (2 1)",
+                                    (1, 2): "YCbCr 4:4:0 (1 2)",
+                                    (1, 1): "YCbCr 4:4:4 (1 1)",
+                                }
+                                sub_interp = sub_map.get((h1, v1), f"Sampling ({h1}x{v1}, {h2}x{v2}, {h3}x{v3})")
+                            else:
+                                sub_interp = f"Sampling ({h1}x{v1}, {h2}x{v2}, {h3}x{v3})"
+                            sof_items.append(
+                                (
+                                    "ComponentSampling",
+                                    "YCbCr subsampling",
+                                    [f"{h}x{v}" for h, v in sampling_pairs],
+                                    sub_interp,
+                                    "array",
+                                )
+                            )
+                        for s_name, s_label, s_raw, s_interp, s_dtype in sof_items:
+                            records.append(
+                                MetadataRecord(
+                                    record_id=f"container:jpeg:sof:{s_name}",
+                                    source="JPEG Container",
+                                    category="JPEG / JFIF Information",
+                                    tag_name=s_label,
+                                    namespace="JPEG",
+                                    path=("JPEG Container", "SOF", s_name),
+                                    raw_value=s_raw,
+                                    interpreted_value=s_interp,
+                                    data_type=s_dtype,
+                                    status=MetadataStatus.PRESENT,
+                                )
+                            )
+
+            pos += seg_len
+        if jpeg_segments:
+            records.append(
+                MetadataRecord(
+                    record_id="container:jpeg:segments",
+                    source="JPEG Container",
+                    category="JPEG Structure",
+                    tag_name="JPEG marker segments",
+                    namespace="JPEG",
+                    path=("JPEG", "Segments"),
+                    raw_value=jpeg_segments,
+                    interpreted_value=", ".join(jpeg_segments),
+                    data_type="array",
+                    status=MetadataStatus.PRESENT,
+                )
+            )
 
     state = StageCompletionState.PARTIAL if warnings else StageCompletionState.COMPLETED
     return records, MetadataExtractionStage(
@@ -440,6 +917,13 @@ def _extract_exif_makernotes_thumbnail(
                     else _EXIF_CATEGORY_MAP.get(short_name, "EXIF Metadata")
                 )
                 seen_exif_tags.add(short_name)
+                if short_name == "ExposureTime" and isinstance(raw_v, dict) and "numerator" in raw_v:
+                    interp_v = f"{raw_v['numerator']}/{raw_v['denominator']} s"
+                elif short_name == "FNumber" and isinstance(raw_v, dict) and raw_v.get("denominator"):
+                    f_val = raw_v["numerator"] / raw_v["denominator"]
+                    interp_v = f"f/{f_val:g}"
+                elif short_name == "Orientation" and isinstance(raw_v, int) and interp_v and not interp_v.startswith(str(raw_v)):
+                    interp_v = f"{raw_v} — {interp_v}"
                 exif_records.append(
                     MetadataRecord(
                         record_id=f"exif:{ifd_name}:{tag_id_hex or short_name}:{short_name}",
@@ -448,7 +932,7 @@ def _extract_exif_makernotes_thumbnail(
                         tag_name=short_name,
                         tag_id=tag_id_hex,
                         namespace=ifd_name,
-                        path=(ifd_name, short_name),
+                        path=("EXIF", ifd_name, short_name),
                         raw_value=raw_v,
                         interpreted_value=interp_v,
                         data_type=dtype_v,
@@ -509,7 +993,7 @@ def _extract_exif_makernotes_thumbnail(
                             tag_name=display_name,
                             tag_id=tag_id_hex,
                             namespace=ifd_label,
-                            path=(ifd_label, display_name),
+                            path=("EXIF", ifd_label, display_name),
                             raw_value=raw_v,
                             interpreted_value=interp_v,
                             data_type=dtype_v,
@@ -1071,36 +1555,162 @@ def extract_metadata_inventory(
     file_bytes: bytes,
     image_format: str,
     properties: ImageProperties,
+    *,
+    enable_exiftool: bool = True,
 ) -> MetadataInventory:
     """Extract a bounded, non-GPS metadata inventory and measurable coverage report."""
-    all_records: list[MetadataRecord] = []
+    internal_records: list[MetadataRecord] = []
     stages: list[MetadataExtractionStage] = []
     all_warnings: list[MetadataExtractionWarning] = []
     gps_present = False
 
-    container_recs, container_stage = _extract_container(file_bytes, properties)
-    all_records.extend(container_recs)
-    stages.append(container_stage)
+    sig_info = identify_file_signature(file_bytes, properties.filename)
 
+    t0 = time.monotonic()
+    container_recs, container_stage = _extract_container(file_bytes, properties)
+    container_dur = (time.monotonic() - t0) * 1000.0
+    internal_records.extend(container_recs)
+    stages.append(
+        MetadataExtractionStage(
+            stage_id=container_stage.stage_id,
+            source_standard=container_stage.source_standard,
+            completion_state=container_stage.completion_state,
+            records_extracted=container_stage.records_extracted,
+            warnings=container_stage.warnings,
+            unsupported_features=container_stage.unsupported_features,
+            limitations=container_stage.limitations,
+            engine_name=f"Pillow + {image_format} Container Parser",
+            engine_version=getattr(Image, "__version__", None),
+            availability="Available",
+            duration_ms=container_dur,
+        )
+    )
+
+    t0 = time.monotonic()
     exif_recs, exif_stage, mn_stage, thumb_stage, exif_gps = _extract_exif_makernotes_thumbnail(
         file_bytes, image_format
     )
-    all_records.extend(exif_recs)
-    stages.extend([exif_stage, mn_stage, thumb_stage])
+    exif_dur = (time.monotonic() - t0) * 1000.0
+    internal_records.extend(exif_recs)
+    for st in (exif_stage, mn_stage, thumb_stage):
+        stages.append(
+            MetadataExtractionStage(
+                stage_id=st.stage_id,
+                source_standard=st.source_standard,
+                completion_state=st.completion_state,
+                records_extracted=st.records_extracted,
+                warnings=st.warnings,
+                unsupported_features=st.unsupported_features,
+                limitations=st.limitations,
+                engine_name="exifread + Pillow EXIF",
+                engine_version=getattr(exifread, "__version__", None),
+                availability="Unsupported" if st.completion_state is StageCompletionState.UNSUPPORTED else "Available",
+                duration_ms=exif_dur if st.stage_id == "exif" else 0.0,
+            )
+        )
     gps_present = gps_present or exif_gps
 
+    t0 = time.monotonic()
     xmp_recs, xmp_stage, xmp_gps = _extract_xmp_inventory(file_bytes, image_format)
-    all_records.extend(xmp_recs)
-    stages.append(xmp_stage)
+    xmp_dur = (time.monotonic() - t0) * 1000.0
+    internal_records.extend(xmp_recs)
+    stages.append(
+        MetadataExtractionStage(
+            stage_id=xmp_stage.stage_id,
+            source_standard=xmp_stage.source_standard,
+            completion_state=xmp_stage.completion_state,
+            records_extracted=xmp_stage.records_extracted,
+            warnings=xmp_stage.warnings,
+            unsupported_features=xmp_stage.unsupported_features,
+            limitations=xmp_stage.limitations,
+            engine_name="Native XMP Parser",
+            availability="Unsupported" if xmp_stage.completion_state is StageCompletionState.UNSUPPORTED else "Available",
+            duration_ms=xmp_dur,
+        )
+    )
     gps_present = gps_present or xmp_gps
 
+    t0 = time.monotonic()
     iptc_recs, iptc_stage = _extract_iptc_inventory(file_bytes, image_format)
-    all_records.extend(iptc_recs)
-    stages.append(iptc_stage)
+    iptc_dur = (time.monotonic() - t0) * 1000.0
+    internal_records.extend(iptc_recs)
+    stages.append(
+        MetadataExtractionStage(
+            stage_id=iptc_stage.stage_id,
+            source_standard=iptc_stage.source_standard,
+            completion_state=iptc_stage.completion_state,
+            records_extracted=iptc_stage.records_extracted,
+            warnings=iptc_stage.warnings,
+            unsupported_features=iptc_stage.unsupported_features,
+            limitations=iptc_stage.limitations,
+            engine_name="Native IPTC Parser",
+            availability="Unsupported" if iptc_stage.completion_state is StageCompletionState.UNSUPPORTED else "Available",
+            duration_ms=iptc_dur,
+        )
+    )
 
+    t0 = time.monotonic()
     icc_recs, icc_stage = _extract_icc_inventory(file_bytes)
-    all_records.extend(icc_recs)
-    stages.append(icc_stage)
+    icc_dur = (time.monotonic() - t0) * 1000.0
+    internal_records.extend(icc_recs)
+    stages.append(
+        MetadataExtractionStage(
+            stage_id=icc_stage.stage_id,
+            source_standard=icc_stage.source_standard,
+            completion_state=icc_stage.completion_state,
+            records_extracted=icc_stage.records_extracted,
+            warnings=icc_stage.warnings,
+            unsupported_features=icc_stage.unsupported_features,
+            limitations=icc_stage.limitations,
+            engine_name="Pillow ImageCms (ICC)",
+            availability="Available",
+            duration_ms=icc_dur,
+        )
+    )
+
+    et_available = False
+    if enable_exiftool:
+        et_res = run_exiftool(file_bytes, properties.filename)
+        et_available = et_res.status.available
+        gps_present = gps_present or et_res.gps_present_indicator
+        if et_res.execution_status == "UNAVAILABLE":
+            et_state = StageCompletionState.UNSUPPORTED
+            et_avail_label = "Unavailable"
+        elif et_res.execution_status == "COMPLETED":
+            et_state = StageCompletionState.COMPLETED
+            et_avail_label = "Available"
+        elif et_res.execution_status == "EMPTY":
+            et_state = StageCompletionState.EMPTY
+            et_avail_label = "Available"
+        elif et_res.execution_status == "SKIPPED_RESOURCE_LIMIT":
+            et_state = StageCompletionState.SKIPPED_RESOURCE_LIMIT
+            et_avail_label = "Available"
+        else:
+            et_state = StageCompletionState.FAILED
+            et_avail_label = "Available"
+        stages.append(
+            MetadataExtractionStage(
+                stage_id="exiftool",
+                source_standard="ExifTool",
+                completion_state=et_state,
+                records_extracted=len(et_res.records),
+                warnings=et_res.warnings,
+                unsupported_features=() if et_available else (et_res.status.reason,),
+                limitations=(
+                    ("ExifTool GPS group tags are excluded from ordinary metadata inventory.",)
+                    if et_available
+                    else (et_res.status.reason,)
+                ),
+                engine_name="ExifTool",
+                engine_version=et_res.status.version,
+                availability=et_avail_label,
+                duration_ms=et_res.duration_ms,
+                errors=(et_res.error,) if et_res.error else (),
+            )
+        )
+        all_records = list(merge_metadata_records(internal_records, et_res.records))
+    else:
+        all_records = list(merge_metadata_records(internal_records))
 
     for stage in stages:
         all_warnings.extend(stage.warnings)
@@ -1117,15 +1727,26 @@ def extract_metadata_inventory(
 
     categories_found = tuple(dict.fromkeys(r.category for r in all_records))
     unsupported_sources = tuple(
-        s.source_standard for s in stages if s.completion_state is StageCompletionState.UNSUPPORTED
+        s.source_standard
+        for s in stages
+        if s.completion_state is StageCompletionState.UNSUPPORTED and s.stage_id != "exiftool"
     )
+    limitations_list = list(GLOBAL_LIMITATIONS)
+    if all(s.records_extracted == 0 for s in stages if s.stage_id in {"exif", "xmp", "iptc"}):
+        limitations_list.append(
+            "Some metadata may have been removed or was not present in this image. "
+            "PIXELTRUTH extracted the information that remains available."
+        )
+    format_cap = get_format_capability(image_format, exiftool_available=et_available)
     coverage = MetadataExtractionCoverage(
         total_records=len(all_records),
         categories_found=categories_found,
         unsupported_sources=unsupported_sources,
         stages=tuple(stages),
         warnings=tuple(all_warnings),
-        limitations=GLOBAL_LIMITATIONS,
+        limitations=tuple(limitations_list),
+        format_capability=format_cap.to_dict(),
+        file_signature=sig_info.to_dict(),
     )
     return MetadataInventory(
         records=tuple(all_records),

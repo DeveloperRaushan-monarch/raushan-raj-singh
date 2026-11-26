@@ -158,6 +158,14 @@ Exit criteria: end-to-end supported workflows function; relevant test suite pass
 - Remaining issues: Live browser visual verification of Phase D/E states remains pending when Chrome remote debugging is unavailable.
 - User report delivered: Yes.
 
+- Phase: Master Engineering Upgrade (Universal Metadata, GPS Fix, Assessment & Export Audit)
+- Date: 2026-11-26
+- Summary: Added JPEG marker segment, PNG chunk, and WebP RIFF chunk container inspection plus stripped/WhatsApp-image limitation notes in `core/metadata_inventory.py`; fixed `core/gps.py` (negative DMS rejection, bytes ref decoding, single decimal support, valid zero coordinates, raw GPS tag preservation, and explicit `gps_state` classification); enriched `POST /api/gps/reveal` and `frontend/app.js` GPS & assessment-applicability display; verified `PT-EA/1.0.0` 17-evaluation `INSUFFICIENT EVIDENCE` behavior on stripped images.
+- Tests and results: Verified via `.venv/bin/python -m pytest -q`, `pip check`, `node --check frontend/app.js`, and `git diff --check`.
+- Documentation updated: README.md, phases.in, memory.in.
+- Remaining issues: HEIF/HEIC remains unsupported without an additional decoder; live Chrome DevTools / Playwright browser automation remains unavailable (`DevToolsActivePort` missing, `playwright` not installed).
+- User report delivered: Yes.
+
 Append one entry after each completed phase:
 
 - Phase: [number and name]

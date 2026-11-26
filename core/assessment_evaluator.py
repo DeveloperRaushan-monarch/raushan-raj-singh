@@ -100,8 +100,8 @@ def _evaluate_field_validity(
                     evaluation_id=evaluation_id,
                     check_id=check_id,
                     applicability=Applicability.NOT_APPLICABLE,
-                    applicability_reason=f"Field '{field_key}' is missing from extracted metadata.",
-                    coverage_state=CoverageState.NOT_EVALUABLE,
+                    applicability_reason=f"{label} field ('{field_key}') is absent from extracted metadata; {label.lower()} consistency cannot be evaluated.",
+                    coverage_state=CoverageState.NOT_APPLICABLE,
                     coverage_reason=NotEvaluableReason.NOT_APPLICABLE.value,
                     finding_ids=(),
                 )
@@ -212,7 +212,7 @@ def _evaluate_timestamp_comparison(
                 check_id=check_id,
                 applicability=Applicability.NOT_APPLICABLE,
                 applicability_reason="Both DateTimeOriginal and DateTimeDigitized must be present for comparison.",
-                coverage_state=CoverageState.NOT_EVALUABLE,
+                coverage_state=CoverageState.NOT_APPLICABLE,
                 coverage_reason=NotEvaluableReason.NOT_APPLICABLE.value,
                 finding_ids=(),
             ),
@@ -343,8 +343,8 @@ def _evaluate_dimension_comparison(
                 evaluation_id=evaluation_id,
                 check_id=check_id,
                 applicability=Applicability.NOT_APPLICABLE,
-                applicability_reason="EXIF pixel_x_dimension and pixel_y_dimension must both be present.",
-                coverage_state=CoverageState.NOT_EVALUABLE,
+                applicability_reason="EXIF pixel_x_dimension and pixel_y_dimension are absent; EXIF dimension comparison cannot be evaluated.",
+                coverage_state=CoverageState.NOT_APPLICABLE,
                 coverage_reason=NotEvaluableReason.NOT_APPLICABLE.value,
                 finding_ids=(),
             ),
@@ -533,10 +533,302 @@ def _evaluate_dimension_comparison(
     )
 
 
+def _safe_run_rule(
+    rule_id: str,
+    fn,
+) -> tuple[RuleEvaluation, list[AssessmentFinding]]:
+    """Run a singleton rule safely; execution errors become APPLICABLE / NOT_EVALUABLE."""
+    try:
+        return fn()
+    except Exception as exc:
+        check_id = RULE_REGISTRY[rule_id].check_id
+        return (
+            RuleEvaluation(
+                rule_set_version=RULE_SET_VERSION,
+                rule_id=rule_id,
+                evaluation_id=rule_id,
+                check_id=check_id,
+                applicability=Applicability.APPLICABLE,
+                applicability_reason=f"Rule '{rule_id}' was applicable but encountered an execution error.",
+                coverage_state=CoverageState.NOT_EVALUABLE,
+                coverage_reason=NotEvaluableReason.FAILED.value,
+                finding_ids=(),
+            ),
+            [],
+        )
+
+
+def _evaluate_image_properties(
+    properties: ImageProperties,
+) -> tuple[RuleEvaluation, list[AssessmentFinding]]:
+    rule_id = "image-properties-consistency"
+    check_id = RULE_REGISTRY[rule_id].check_id
+    issues: list[str] = []
+    if properties.width <= 0 or properties.height <= 0:
+        issues.append("Decoded width/height must be positive.")
+    if properties.frame_count < 1:
+        issues.append("Frame count must be at least 1.")
+    if not properties.color_mode:
+        issues.append("Colour mode is missing.")
+    if properties.bit_depth_per_channel is not None and properties.bit_depth_per_channel <= 0:
+        issues.append("Bit depth per channel must be positive.")
+
+    if not issues:
+        return (
+            RuleEvaluation(
+                rule_set_version=RULE_SET_VERSION,
+                rule_id=rule_id,
+                evaluation_id=rule_id,
+                check_id=check_id,
+                applicability=Applicability.APPLICABLE,
+                applicability_reason="Decoded ImageProperties are available from the image decoder.",
+                coverage_state=CoverageState.EVALUATED_WITHOUT_FINDING,
+                coverage_reason=(
+                    f"Decoded dimensions ({properties.width} × {properties.height} px), colour mode "
+                    f"({properties.color_mode}), and frame count ({properties.frame_count}) are internally consistent."
+                ),
+                finding_ids=(),
+            ),
+            [],
+        )
+
+    finding_id = "image-properties-inconsistent"
+    return (
+        RuleEvaluation(
+            rule_set_version=RULE_SET_VERSION,
+            rule_id=rule_id,
+            evaluation_id=rule_id,
+            check_id=check_id,
+            applicability=Applicability.APPLICABLE,
+            applicability_reason="Decoded ImageProperties are available from the image decoder.",
+            coverage_state=CoverageState.EVALUATED_WITH_FINDING,
+            coverage_reason="One or more decoded image properties are inconsistent.",
+            finding_ids=(finding_id,),
+        ),
+        [
+            AssessmentFinding(
+                rule_set_version=RULE_SET_VERSION,
+                rule_id=rule_id,
+                evaluation_id=rule_id,
+                check_id=check_id,
+                finding_id=finding_id,
+                category="Image structure",
+                title="Decoded image properties are inconsistent",
+                relevance=Relevance.REVIEW.value,
+                observed_evidence=" ".join(issues),
+                explanation="Image decoder properties did not satisfy basic structural consistency checks.",
+                possible_interpretations="The container header or decoder state may be malformed.",
+                limitations="Structural inconsistency does not identify how or why the file was modified.",
+                recommended_next_check="Re-inspect the file container and headers.",
+            )
+        ],
+    )
+
+
+def _evaluate_container_structure(
+    inspection: ImageInspection,
+) -> tuple[RuleEvaluation, list[AssessmentFinding]]:
+    rule_id = "container-structure-integrity"
+    check_id = RULE_REGISTRY[rule_id].check_id
+    inv = getattr(inspection, "inventory", None)
+    if inv is None or not getattr(inv, "coverage", None):
+        return (
+            RuleEvaluation(
+                rule_set_version=RULE_SET_VERSION,
+                rule_id=rule_id,
+                evaluation_id=rule_id,
+                check_id=check_id,
+                applicability=Applicability.NOT_APPLICABLE,
+                applicability_reason="MetadataInventory container stage was not supplied for this inspection.",
+                coverage_state=CoverageState.NOT_APPLICABLE,
+                coverage_reason=NotEvaluableReason.NOT_APPLICABLE.value,
+                finding_ids=(),
+            ),
+            [],
+        )
+
+    stage = next((s for s in inv.coverage.stages if s.stage_id == "container"), None)
+    if stage is None:
+        return (
+            RuleEvaluation(
+                rule_set_version=RULE_SET_VERSION,
+                rule_id=rule_id,
+                evaluation_id=rule_id,
+                check_id=check_id,
+                applicability=Applicability.NOT_APPLICABLE,
+                applicability_reason="Container extraction stage was not present.",
+                coverage_state=CoverageState.NOT_APPLICABLE,
+                coverage_reason=NotEvaluableReason.NOT_APPLICABLE.value,
+                finding_ids=(),
+            ),
+            [],
+        )
+
+    state_val = stage.completion_state.value if hasattr(stage.completion_state, "value") else str(stage.completion_state)
+    if state_val == "COMPLETED":
+        return (
+            RuleEvaluation(
+                rule_set_version=RULE_SET_VERSION,
+                rule_id=rule_id,
+                evaluation_id=rule_id,
+                check_id=check_id,
+                applicability=Applicability.APPLICABLE,
+                applicability_reason="Container structure and format headers are available.",
+                coverage_state=CoverageState.EVALUATED_WITHOUT_FINDING,
+                coverage_reason=f"Container structure ({inspection.properties.image_format}) parsed cleanly with {stage.records_extracted} record(s).",
+                finding_ids=(),
+            ),
+            [],
+        )
+
+    finding_id = "container-structure-warning"
+    warn_text = "; ".join(w.message for w in stage.warnings) or f"Container stage reported {state_val}."
+    return (
+        RuleEvaluation(
+            rule_set_version=RULE_SET_VERSION,
+            rule_id=rule_id,
+            evaluation_id=rule_id,
+            check_id=check_id,
+            applicability=Applicability.APPLICABLE,
+            applicability_reason="Container structure extraction encountered warnings or errors.",
+            coverage_state=CoverageState.EVALUATED_WITH_FINDING,
+            coverage_reason=f"Container stage completed with status {state_val}.",
+            finding_ids=(finding_id,),
+        ),
+        [
+            AssessmentFinding(
+                rule_set_version=RULE_SET_VERSION,
+                rule_id=rule_id,
+                evaluation_id=rule_id,
+                check_id=check_id,
+                finding_id=finding_id,
+                category="Container structure",
+                title="Container structure parser reported warnings",
+                relevance=Relevance.REVIEW.value,
+                observed_evidence=warn_text,
+                explanation="Container header/chunk parsing did not complete cleanly.",
+                possible_interpretations="The file may have non-standard or truncated container chunks.",
+                limitations="Container parser warnings do not establish intentional manipulation.",
+                recommended_next_check="Inspect container chunk records in Metadata Explorer.",
+            )
+        ],
+    )
+
+
+def _evaluate_optional_stage(
+    inspection: ImageInspection,
+    *,
+    rule_id: str,
+    stage_id: str,
+    label: str,
+    finding_id: str,
+    fail_on_partial: bool = False,
+) -> tuple[RuleEvaluation, list[AssessmentFinding]]:
+    check_id = RULE_REGISTRY[rule_id].check_id
+    inv = getattr(inspection, "inventory", None)
+    if inv is None or not getattr(inv, "coverage", None):
+        return (
+            RuleEvaluation(
+                rule_set_version=RULE_SET_VERSION,
+                rule_id=rule_id,
+                evaluation_id=rule_id,
+                check_id=check_id,
+                applicability=Applicability.NOT_APPLICABLE,
+                applicability_reason=f"MetadataInventory was not supplied; {label} stage cannot be evaluated.",
+                coverage_state=CoverageState.NOT_APPLICABLE,
+                coverage_reason=NotEvaluableReason.NOT_APPLICABLE.value,
+                finding_ids=(),
+            ),
+            [],
+        )
+
+    stage = next((s for s in inv.coverage.stages if s.stage_id == stage_id), None)
+    if stage is None:
+        return (
+            RuleEvaluation(
+                rule_set_version=RULE_SET_VERSION,
+                rule_id=rule_id,
+                evaluation_id=rule_id,
+                check_id=check_id,
+                applicability=Applicability.NOT_APPLICABLE,
+                applicability_reason=f"{label} stage is absent from extraction coverage.",
+                coverage_state=CoverageState.NOT_APPLICABLE,
+                coverage_reason=NotEvaluableReason.NOT_APPLICABLE.value,
+                finding_ids=(),
+            ),
+            [],
+        )
+
+    state_val = stage.completion_state.value if hasattr(stage.completion_state, "value") else str(stage.completion_state)
+    if state_val in {"EMPTY", "UNSUPPORTED", "SKIPPED_RESOURCE_LIMIT"}:
+        return (
+            RuleEvaluation(
+                rule_set_version=RULE_SET_VERSION,
+                rule_id=rule_id,
+                evaluation_id=rule_id,
+                check_id=check_id,
+                applicability=Applicability.NOT_APPLICABLE,
+                applicability_reason=f"No {label} block was present or supported in this image ({state_val}).",
+                coverage_state=CoverageState.NOT_APPLICABLE,
+                coverage_reason=NotEvaluableReason.NOT_APPLICABLE.value,
+                finding_ids=(),
+            ),
+            [],
+        )
+
+    if state_val == "COMPLETED" or (state_val == "PARTIAL" and not fail_on_partial):
+        return (
+            RuleEvaluation(
+                rule_set_version=RULE_SET_VERSION,
+                rule_id=rule_id,
+                evaluation_id=rule_id,
+                check_id=check_id,
+                applicability=Applicability.APPLICABLE,
+                applicability_reason=f"{label} metadata is present in this image.",
+                coverage_state=CoverageState.EVALUATED_WITHOUT_FINDING,
+                coverage_reason=f"{label} structure parsed cleanly ({stage.records_extracted} record(s)).",
+                finding_ids=(),
+            ),
+            [],
+        )
+
+    warn_text = "; ".join(w.message for w in stage.warnings) or f"{label} stage reported {state_val}."
+    return (
+        RuleEvaluation(
+            rule_set_version=RULE_SET_VERSION,
+            rule_id=rule_id,
+            evaluation_id=rule_id,
+            check_id=check_id,
+            applicability=Applicability.APPLICABLE,
+            applicability_reason=f"{label} metadata is present but failed structural validation.",
+            coverage_state=CoverageState.EVALUATED_WITH_FINDING,
+            coverage_reason=f"{label} stage reported {state_val}.",
+            finding_ids=(finding_id,),
+        ),
+        [
+            AssessmentFinding(
+                rule_set_version=RULE_SET_VERSION,
+                rule_id=rule_id,
+                evaluation_id=rule_id,
+                check_id=check_id,
+                finding_id=finding_id,
+                category="Metadata integrity",
+                title=f"Malformed {label} metadata",
+                relevance=Relevance.REVIEW.value,
+                observed_evidence=warn_text,
+                explanation=f"The embedded {label} structure could not be parsed cleanly.",
+                possible_interpretations=f"The {label} block may be truncated, corrupted, or non-conformant.",
+                limitations=f"Malformed {label} data does not establish cause or intent.",
+                recommended_next_check=f"Review {label} extraction warnings in Metadata Explorer.",
+            )
+        ],
+    )
+
+
 def evaluate_inspection(
     inspection: ImageInspection,
 ) -> tuple[tuple[RuleEvaluation, ...], tuple[AssessmentFinding, ...]]:
-    """Run all registered PT-EA/1.0.0 rules deterministically against an inspection."""
+    """Run all registered PT-EA rules deterministically against an inspection."""
     by_key = {field.key: field for field in inspection.metadata}
     evaluations: list[RuleEvaluation] = []
     findings: list[AssessmentFinding] = []
@@ -552,6 +844,36 @@ def evaluate_inspection(
     dim_eval, dim_findings = _evaluate_dimension_comparison(inspection.properties, by_key)
     evaluations.append(dim_eval)
     findings.extend(dim_findings)
+
+    for rid, runner in (
+        ("image-properties-consistency", lambda: _evaluate_image_properties(inspection.properties)),
+        ("container-structure-integrity", lambda: _evaluate_container_structure(inspection)),
+        (
+            "embedded-xmp-integrity",
+            lambda: _evaluate_optional_stage(
+                inspection,
+                rule_id="embedded-xmp-integrity",
+                stage_id="xmp",
+                label="XMP packet",
+                finding_id="xmp-packet-malformed",
+                fail_on_partial=False,
+            ),
+        ),
+        (
+            "embedded-icc-integrity",
+            lambda: _evaluate_optional_stage(
+                inspection,
+                rule_id="embedded-icc-integrity",
+                stage_id="icc",
+                label="ICC profile",
+                finding_id="icc-profile-malformed",
+                fail_on_partial=False,
+            ),
+        ),
+    ):
+        ev, fds = _safe_run_rule(rid, runner)
+        evaluations.append(ev)
+        findings.extend(fds)
 
     sorted_evals = tuple(
         sorted(evaluations, key=lambda item: (item.rule_id, item.evaluation_id))

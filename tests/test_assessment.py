@@ -159,7 +159,7 @@ def test_t_lc_02_valid_make_with_missing_dimensions_does_not_block():
     assert result.outcome is AssessmentOutcome.LOW_CONCERN
     dim_eval = _eval_by_id(result, "exif-decoded-dimension-comparison")
     assert dim_eval.applicability == Applicability.NOT_APPLICABLE.value
-    assert dim_eval.coverage_state == CoverageState.NOT_EVALUABLE.value
+    assert dim_eval.coverage_state == CoverageState.NOT_APPLICABLE.value
 
 
 def test_t_lc_03_timestamp_difference_is_informational_not_review():
@@ -335,7 +335,7 @@ def test_t_fv_03_orientation_missing():
     )
     ev = next(item for item in evals if item.evaluation_id == "metadata-field-value-validity:orientation")
     assert ev.applicability == Applicability.NOT_APPLICABLE.value
-    assert ev.coverage_state == CoverageState.NOT_EVALUABLE.value
+    assert ev.coverage_state == CoverageState.NOT_APPLICABLE.value
 
 
 @pytest.mark.parametrize("status", [MetadataStatus.UNSUPPORTED, MetadataStatus.UNAVAILABLE])
@@ -894,4 +894,62 @@ def test_unhashable_fields_in_records_do_not_raise_typeerror():
     r_finding = assess_records((_valid_eval(),), (bad_finding,))
     assert r_eval.outcome is AssessmentOutcome.INSUFFICIENT_EVIDENCE
     assert r_finding.outcome is AssessmentOutcome.INSUFFICIENT_EVIDENCE
+
+
+def test_whatsapp_stripped_jpeg_runs_non_exif_rules_and_keeps_exif_na():
+    buf = BytesIO()
+    Image.new("RGB", (64, 48), color=(100, 120, 140)).save(buf, format="JPEG")
+    insp = inspect_image(buf.getvalue(), "WhatsApp Image.jpg")
+    result = assess_inspection(insp)
+
+    assert result.outcome is AssessmentOutcome.INSUFFICIENT_EVIDENCE
+    assert result.rule_set_version == "PT-EA/1.1.0"
+    # Non-EXIF structural rules actually ran
+    img_ev = _eval_by_id(result, "image-properties-consistency")
+    cont_ev = _eval_by_id(result, "container-structure-integrity")
+    assert img_ev.applicability == Applicability.APPLICABLE.value
+    assert img_ev.coverage_state == CoverageState.EVALUATED_WITHOUT_FINDING.value
+    assert cont_ev.applicability == Applicability.APPLICABLE.value
+    assert cont_ev.coverage_state == CoverageState.EVALUATED_WITHOUT_FINDING.value
+
+    # EXIF-specific rules remain NOT_APPLICABLE / NOT_APPLICABLE (never NOT_EVALUABLE)
+    make_ev = _eval_by_id(result, "metadata-field-value-validity:make")
+    assert make_ev.applicability == Applicability.NOT_APPLICABLE.value
+    assert make_ev.coverage_state == CoverageState.NOT_APPLICABLE.value
+    assert any("Some EXIF-based checks could not be performed" in lim for lim in result.limitations)
+
+
+def test_valid_and_malformed_icc_and_xmp_stages_affect_assessment():
+    from PIL import ImageCms
+
+    # Valid ICC profile -> embedded-icc-integrity EVALUATED_WITHOUT_FINDING
+    icc = ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")).tobytes()
+    buf_ok = BytesIO()
+    Image.new("RGB", (24, 24), color="white").save(buf_ok, format="JPEG", icc_profile=icc)
+    r_ok = assess_inspection(inspect_image(buf_ok.getvalue(), "icc_ok.jpg"))
+    icc_ok = _eval_by_id(r_ok, "embedded-icc-integrity")
+    assert icc_ok.applicability == Applicability.APPLICABLE.value
+    assert icc_ok.coverage_state == CoverageState.EVALUATED_WITHOUT_FINDING.value
+
+    # Corrupt ICC profile -> embedded-icc-integrity EVALUATED_WITH_FINDING (NEEDS REVIEW)
+    buf_bad = BytesIO()
+    Image.new("RGB", (24, 24), color="white").save(buf_bad, format="JPEG", icc_profile=b"BAD_ICC" * 10)
+    r_bad = assess_inspection(inspect_image(buf_bad.getvalue(), "icc_bad.jpg"))
+    icc_bad = _eval_by_id(r_bad, "embedded-icc-integrity")
+    assert icc_bad.applicability == Applicability.APPLICABLE.value
+    assert icc_bad.coverage_state == CoverageState.EVALUATED_WITH_FINDING.value
+    assert r_bad.outcome is AssessmentOutcome.NEEDS_REVIEW
+
+
+def test_rule_execution_failure_produces_applicable_not_evaluated():
+    from core.assessment_evaluator import _safe_run_rule
+
+    def boom():
+        raise RuntimeError("simulated parser crash")
+
+    ev, findings = _safe_run_rule("image-properties-consistency", boom)
+    assert ev.applicability == Applicability.APPLICABLE
+    assert ev.coverage_state == CoverageState.NOT_EVALUABLE
+    assert ev.coverage_reason == NotEvaluableReason.FAILED.value
+    assert findings == []
 

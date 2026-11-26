@@ -157,17 +157,21 @@ def _validate_and_collapse_evaluations(
             if cov_val in {
                 CoverageState.EVALUATED_WITHOUT_FINDING.value,
                 CoverageState.NOT_EVALUABLE.value,
+                CoverageState.NOT_APPLICABLE.value,
             } and len(item.finding_ids) > 0:
                 errors.append(
                     f"Evaluation {item.evaluation_id!r} is {cov_val} but has non-empty finding_ids."
                 )
 
-        if app_val == Applicability.NOT_APPLICABLE.value and (
-            cov_val != CoverageState.NOT_EVALUABLE.value
-            or item.coverage_reason != NotEvaluableReason.NOT_APPLICABLE.value
+        if app_val == Applicability.NOT_APPLICABLE.value and not (
+            cov_val == CoverageState.NOT_APPLICABLE.value
+            or (
+                cov_val == CoverageState.NOT_EVALUABLE.value
+                and item.coverage_reason == NotEvaluableReason.NOT_APPLICABLE.value
+            )
         ):
             errors.append(
-                f"Evaluation {item.evaluation_id!r} is NOT_APPLICABLE without NOT_EVALUABLE/NOT_APPLICABLE coverage."
+                f"Evaluation {item.evaluation_id!r} is NOT_APPLICABLE without NOT_APPLICABLE coverage."
             )
         if app_val == Applicability.UNDETERMINED.value and (
             cov_val != CoverageState.NOT_EVALUABLE.value
@@ -310,6 +314,33 @@ def _collect_coverage_limitations(evaluations: tuple[RuleEvaluation, ...]) -> tu
     not_applicable_ids = [
         ev.evaluation_id for ev in evaluations if ev.applicability == Applicability.NOT_APPLICABLE.value
     ]
+    evaluated_non_exif = any(
+        ev.rule_id in {
+            "image-properties-consistency",
+            "container-structure-integrity",
+            "embedded-xmp-integrity",
+            "embedded-icc-integrity",
+        }
+        and ev.coverage_state in {
+            CoverageState.EVALUATED_WITH_FINDING.value,
+            CoverageState.EVALUATED_WITHOUT_FINDING.value,
+        }
+        for ev in evaluations
+    )
+    has_na_exif = any(
+        ev.rule_id in {
+            "metadata-field-value-validity",
+            "exif-original-digitized-time-comparison",
+            "exif-decoded-dimension-comparison",
+        }
+        and ev.applicability == Applicability.NOT_APPLICABLE.value
+        for ev in evaluations
+    )
+    if has_na_exif and evaluated_non_exif:
+        notes.append(
+            "Some EXIF-based checks could not be performed because the required embedded metadata was unavailable. "
+            "Other checks were performed using the image's available technical properties and file structure."
+        )
     if not_applicable_ids:
         notes.append(
             f"Not applicable ({len(not_applicable_ids)} evaluation(s)): "
@@ -439,11 +470,24 @@ def assess_records(
         )
 
     # Rule D — INSUFFICIENT EVIDENCE fallback
+    evaluated_count = sum(
+        1
+        for ev in sorted_evals
+        if ev.coverage_state in {
+            CoverageState.EVALUATED_WITH_FINDING.value,
+            CoverageState.EVALUATED_WITHOUT_FINDING.value,
+        }
+    )
     reasons: list[str] = []
     if not image_validated:
         reasons.append("image validation/decoding did not succeed")
     if not has_substantive:
-        reasons.append("no substantive rule evaluation completed")
+        if evaluated_count > 0:
+            reasons.append(
+                f"{evaluated_count} technical/structural check(s) completed, but no substantive embedded-metadata evaluation completed"
+            )
+        else:
+            reasons.append("no substantive rule evaluation completed")
     if critical_applicable_incomplete:
         reasons.append("a coverage-critical rule was not evaluable")
     if critical_undetermined:

@@ -9,6 +9,7 @@ import struct
 
 from PIL import ExifTags, Image, ImageCms, PngImagePlugin
 from PIL.TiffImagePlugin import IFDRational
+import pytest
 
 from core.analysis import inspect_image
 from core.assessment_engine import assess_inspection
@@ -284,3 +285,185 @@ def test_xmp_node_limit_prevents_unbounded_traversal():
     xmp_stage = next(s for s in inv.coverage.stages if s.stage_id == "xmp")
     assert xmp_stage.completion_state is StageCompletionState.PARTIAL
     assert any(w.code == "XMP_NODE_LIMIT" for w in xmp_stage.warnings)
+
+
+def test_whatsapp_stripped_jpeg_and_container_chunks_extracted():
+    # Stripped JPEG (no EXIF, no XMP, no IPTC) still yields container, JFIF/segments, and honest limitation
+    jbuf = BytesIO()
+    Image.new("RGB", (32, 24), color=(10, 20, 30)).save(jbuf, format="JPEG")
+    j_insp = inspect_image(jbuf.getvalue(), "WhatsApp Image 2026-11-26.jpg")
+    assert any(r.tag_name == "JPEG marker segments" for r in j_insp.inventory.records)
+    assert any(
+        "Some metadata may have been removed or was not present" in lim
+        for lim in j_insp.inventory.coverage.limitations
+    )
+
+    # PNG chunk inventory
+    pbuf = BytesIO()
+    Image.new("RGB", (16, 16), color="white").save(pbuf, format="PNG")
+    p_insp = inspect_image(pbuf.getvalue(), "sample.png")
+    assert any(r.tag_name == "PNG chunks" for r in p_insp.inventory.records)
+
+    # WebP RIFF chunk inventory
+    wbuf = BytesIO()
+    Image.new("RGB", (16, 16), color="white").save(wbuf, format="WEBP")
+    w_insp = inspect_image(wbuf.getvalue(), "sample.webp")
+    assert any(r.tag_name == "WebP RIFF chunks" and r.source == "WebP RIFF Chunk" for r in w_insp.inventory.records)
+
+
+def test_file_image_and_exif_record_mapping_accuracy():
+    from PIL.TiffImagePlugin import IFDRational
+
+    exif = Image.Exif()
+    exif[271] = "Canon"
+    exif[272] = "EOS 5D"
+    exif[274] = 1
+    exif_ifd = exif.get_ifd(0x8769)
+    exif_ifd[36867] = "2026:01:02 10:20:30"
+    exif_ifd[33434] = IFDRational(1, 100)
+    exif_ifd[33437] = IFDRational(18, 10)
+    buf = BytesIO()
+    Image.new("RGB", (32, 24), color="white").save(buf, format="JPEG", exif=exif)
+
+    insp = inspect_image(buf.getvalue(), "photo.jpg")
+    by_id = {r.record_id: r for r in insp.inventory.records}
+
+    # File Information records have accurate sources, namespaces, paths, and readable interpretations
+    sig = by_id["container:file:FileSignature"]
+    assert sig.source == "File Inspector"
+    assert sig.namespace == "File"
+    assert sig.path == ("File", "FileSignature")
+    assert "JPEG SOI" in sig.interpreted_value
+
+    fmt = by_id["container:file:DetectedFormat"]
+    assert fmt.source == "Image Decoder"
+    assert fmt.raw_value == "JPEG"
+    assert "Joint Photographic Experts Group" in fmt.interpreted_value
+
+    ext_mm = by_id["container:file:ExtensionMismatch"]
+    assert ext_mm.source == "File Inspector"
+    assert ext_mm.raw_value is False
+    assert ext_mm.interpreted_value.startswith("No ")
+
+    # EXIF records preserve tag IDs, EXIF paths, raw values, and clean interpretations
+    make_rec = by_id["exif:Image:0x010F:Make"]
+    assert make_rec.tag_id == "0x010F"
+    assert make_rec.path == ("EXIF", "Image", "Make")
+
+    exp_rec = by_id["exif:EXIF:0x829A:ExposureTime"]
+    assert exp_rec.tag_id == "0x829A"
+    assert exp_rec.interpreted_value == "1/100 s"
+
+    fnum_rec = by_id["exif:EXIF:0x829D:FNumber"]
+    assert fnum_rec.tag_id == "0x829D"
+    assert fnum_rec.interpreted_value == "f/1.8"
+
+    ori_rec = by_id["exif:Image:0x0112:Orientation"]
+    assert ori_rec.tag_id == "0x0112"
+    assert ori_rec.data_type == "integer"
+    assert ori_rec.raw_value == 1
+    assert ori_rec.interpreted_value.startswith("1 — ")
+
+
+@pytest.mark.parametrize(
+    "fmt,filename,with_exif",
+    [
+        ("JPEG", "camera.jpg", True),
+        ("JPEG", "no_exif.jpg", False),
+        ("JPEG", "WhatsApp Image 2026-11-26.jpg", False),
+        ("PNG", "Screenshot 2026-11-26.png", False),
+        ("PNG", "png_with_exif.png", True),
+        ("WEBP", "photo.webp", True),
+        ("TIFF", "scan.tiff", True),
+        ("GIF", "anim.gif", False),
+        ("BMP", "bitmap.bmp", False),
+    ],
+)
+def test_image_information_extracted_independently_of_exif(fmt: str, filename: str, with_exif: bool):
+    exif = Image.Exif()
+    if with_exif:
+        exif[271] = "TestMake"
+    buf = BytesIO()
+    mode = "RGB" if fmt in {"JPEG", "BMP", "TIFF"} else "RGBA"
+    color = (40, 80, 120) if mode == "RGB" else (40, 80, 120, 255)
+    save_kwargs = {}
+    if with_exif and fmt in {"JPEG", "PNG", "WEBP"}:
+        save_kwargs["exif"] = exif
+    elif with_exif and fmt == "TIFF":
+        save_kwargs["exif"] = exif.tobytes()
+    if fmt in {"JPEG", "PNG"}:
+        save_kwargs["dpi"] = (72, 72)
+    Image.new(mode, (48, 32), color=color).save(buf, format=fmt, **save_kwargs)
+
+    insp = inspect_image(buf.getvalue(), filename)
+    by_id = {r.record_id: r for r in insp.inventory.records}
+    assert by_id["container:image:Dimensions"].raw_value == "48 × 32"
+    assert by_id["container:image:Width"].raw_value == 48
+    assert by_id["container:image:Height"].raw_value == 32
+    assert by_id["container:image:ColorMode"].raw_value == insp.properties.color_mode
+    assert by_id["container:image:ColourChannels"].raw_value >= 1
+    assert by_id["container:image:FrameCount"].raw_value == 1
+    if fmt in {"JPEG", "PNG"}:
+        dpi_interp = by_id["container:info:dpi"].interpreted_value
+        assert "72" in dpi_interp and "DPI" in dpi_interp
+
+
+def test_jpeg_jfif_sof_subsampling_progressive_and_whatsapp_1200x1600():
+    # 1. 1200x1600 progressive JPEG (4:2:0) without EXIF, JFIF 1.01, unit=0
+    buf = BytesIO()
+    Image.new("RGB", (1200, 1600), color=(30, 60, 90)).save(
+        buf, format="JPEG", progressive=True, subsampling=2
+    )
+    insp = inspect_image(buf.getvalue(), "WhatsApp Image.jpg")
+    by_id = {r.record_id: r for r in insp.inventory.records}
+
+    assert by_id["container:file:FileExtension"].raw_value == "jpg"
+    assert by_id["container:file:RawHeaderPreview"].raw_value.startswith("FF D8 FF E0")
+    assert by_id["container:image:Megapixels"].interpreted_value.startswith("1.92 MP")
+    assert by_id["container:jpeg:jfif:JFIFVersion"].raw_value == "1.01"
+    assert by_id["container:jpeg:jfif:ResolutionUnit"].raw_value == 0
+    assert "DPI" not in by_id["container:jpeg:jfif:XResolution"].interpreted_value
+    assert by_id["container:jpeg:sof:EncodingProcess"].interpreted_value == "Progressive DCT, Huffman coding"
+    assert by_id["container:jpeg:sof:Progressive"].raw_value is True
+    assert by_id["container:jpeg:sof:Precision"].raw_value == 8
+    assert by_id["container:jpeg:sof:ColorComponents"].raw_value == 3
+    assert by_id["container:jpeg:sof:ComponentSampling"].interpreted_value == "YCbCr 4:2:0 (2 2)"
+
+    # 2. Baseline 4:2:2 and 4:4:4 + density unit 1
+    for subs, expected_label in ((1, "YCbCr 4:2:2 (2 1)"), (0, "YCbCr 4:4:4 (1 1)")):
+        b = BytesIO()
+        Image.new("RGB", (32, 32), color="white").save(
+            b, format="JPEG", progressive=False, subsampling=subs, dpi=(96, 96)
+        )
+        r_map = {r.record_id: r for r in inspect_image(b.getvalue(), "base.jpg").inventory.records}
+        assert r_map["container:jpeg:jfif:ResolutionUnit"].raw_value == 1
+        assert "96 DPI" in r_map["container:jpeg:jfif:XResolution"].interpreted_value
+        assert r_map["container:jpeg:sof:EncodingProcess"].interpreted_value == "Baseline DCT, Huffman coding"
+        assert r_map["container:jpeg:sof:Progressive"].raw_value is False
+        assert r_map["container:jpeg:sof:ComponentSampling"].interpreted_value == expected_label
+
+
+def test_jpeg_malformed_app0_sof_and_truncated_segments_handled_safely():
+    base_buf = BytesIO()
+    Image.new("RGB", (16, 16), color="white").save(base_buf, format="JPEG")
+    props = inspect_image(base_buf.getvalue(), "base.jpg").properties
+
+    # Malformed APP0 (truncated JFIF payload)
+    bad_app0 = b"\xff\xd8\xff\xe0\x00\x09JFIF\x00\x01\x01\xff\xd9"
+    inv1 = extract_metadata_inventory(bad_app0, "JPEG", props)
+    assert any(w.code == "JPEG_APP0_MALFORMED" for w in inv1.coverage.warnings)
+
+    # Malformed SOF (truncated SOF0 payload)
+    bad_sof = b"\xff\xd8\xff\xc0\x00\x04\x08\x00\xff\xd9"
+    inv2 = extract_metadata_inventory(bad_sof, "JPEG", props)
+    assert any(w.code == "JPEG_SOF_MALFORMED" for w in inv2.coverage.warnings)
+
+    # Invalid segment length (seg_len=1 < 2)
+    bad_len = b"\xff\xd8\xff\xe1\x00\x01\xff\xd9"
+    inv3 = extract_metadata_inventory(bad_len, "JPEG", props)
+    assert any(w.code == "JPEG_SEGMENT_INVALID" for w in inv3.coverage.warnings)
+
+    # Truncated JPEG
+    trunc = b"\xff\xd8\xff\xe0\x00"
+    inv4 = extract_metadata_inventory(trunc, "JPEG", props)
+    assert any(w.code == "JPEG_TRUNCATED" for w in inv4.coverage.warnings)

@@ -381,6 +381,13 @@ class PixeltruthRequestHandler(BaseHTTPRequestHandler):
                     "is_unknown",
                     "is_hierarchical",
                     "limitations",
+                    "source_engine",
+                    "source_container",
+                    "group",
+                    "unit",
+                    "extraction_status",
+                    "discovered_by",
+                    "engine_disagreement",
                 ]
             )
             for rec in inv_dict.get("records", []):
@@ -390,6 +397,7 @@ class PixeltruthRequestHandler(BaseHTTPRequestHandler):
                 else:
                     raw_cell = raw_val
                 path_val = " / ".join(rec.get("path") or [])
+                discovered_val = ", ".join(rec.get("discovered_by") or [])
                 writer.writerow(
                     [
                         sanitize_csv_cell(rec.get("record_id")),
@@ -406,6 +414,13 @@ class PixeltruthRequestHandler(BaseHTTPRequestHandler):
                         sanitize_csv_cell(rec.get("is_unknown")),
                         sanitize_csv_cell(rec.get("is_hierarchical")),
                         sanitize_csv_cell(rec.get("limitations")),
+                        sanitize_csv_cell(rec.get("source_engine")),
+                        sanitize_csv_cell(rec.get("source_container")),
+                        sanitize_csv_cell(rec.get("group")),
+                        sanitize_csv_cell(rec.get("unit")),
+                        sanitize_csv_cell(rec.get("extraction_status")),
+                        sanitize_csv_cell(discovered_val),
+                        sanitize_csv_cell(rec.get("engine_disagreement")),
                     ]
                 )
             csv_bytes = csv_buf.getvalue().encode("utf-8")
@@ -472,11 +487,16 @@ class PixeltruthRequestHandler(BaseHTTPRequestHandler):
             raw_name = unquote(self.headers.get("X-Filename") or "upload.bin")
             try:
                 inspection = inspect_image(raw, raw_name)
+                assessment = assess_inspection(inspection)
             except ImageValidationError as exc:
                 self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
                 return
-
-            assessment = assess_inspection(inspection)
+            except Exception:
+                self._send_error_json(
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                    "Unexpected error while inspecting image.",
+                )
+                return
             safe_name = sanitize_display_filename(inspection.properties.filename, redact_paths=True)
             props = inspection.properties
             validated = ValidatedImage(
@@ -548,11 +568,14 @@ class PixeltruthRequestHandler(BaseHTTPRequestHandler):
                 HTTPStatus.OK,
                 {
                     "status": gps.status.value,
+                    "gps_state": gps.gps_state,
                     "latitude": gps.latitude,
                     "longitude": gps.longitude,
                     "altitude_meters": gps.altitude_meters,
                     "timestamp_utc": gps.timestamp_utc,
                     "note": gps.note or "",
+                    "raw_tags": dict(gps.raw_tags),
+                    "extra_properties": dict(gps.extra_properties),
                 },
             )
             return

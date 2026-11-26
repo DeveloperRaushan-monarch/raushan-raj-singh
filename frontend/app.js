@@ -378,7 +378,10 @@
       });
     }
 
-    $("assess-eval-count").textContent = a.evaluations.length + " evaluations";
+    const applicableCount = a.evaluations.filter((ev) => ev.applicability === "APPLICABLE").length;
+    const evaluatedCount = a.evaluations.filter((ev) => ev.coverage_state === "EVALUATED_WITH_FINDING" || ev.coverage_state === "EVALUATED_WITHOUT_FINDING").length;
+    const notAppCount = a.evaluations.length - applicableCount;
+    $("assess-eval-count").textContent = `${applicableCount} applicable (${evaluatedCount} evaluated) · ${notAppCount} not applicable (${a.evaluations.length} total)`;
     const evalBody = $("assess-eval-body");
     evalBody.innerHTML = "";
     a.evaluations.forEach((ev) => {
@@ -402,13 +405,50 @@
       limBox.appendChild(p);
     });
 
-    // Render Extraction Coverage & Dynamic Metadata Explorer
+    // Render Image Information summary, Extraction Coverage & Dynamic Metadata Explorer
+    renderImageInfoSummary(data);
     renderCoverage(data.inventory);
     populateFilterOptions(data.inventory);
     renderMetadataGroups();
 
     // Reset GPS UI on new upload
     renderGpsState();
+  }
+
+  function renderImageInfoSummary(data) {
+    const grid = $("meta-image-summary-grid");
+    if (!grid) return;
+    grid.innerHTML = "";
+    const p = data.properties;
+    const records = (data.inventory && Array.isArray(data.inventory.records)) ? data.inventory.records : [];
+    const findRec = (id) => records.find((r) => r.record_id === id);
+
+    const channelsRec = findRec("container:image:ColourChannels");
+    const dpiRec = findRec("container:info:dpi");
+    const items = [
+      ["Dimensions", `${p.width} × ${p.height} px`],
+      ["Colour mode", p.color_mode],
+      ["Channels", channelsRec ? String(channelsRec.raw_value) : "Unavailable"],
+      ["Bit depth", p.bit_depth_per_channel ? `${p.bit_depth_per_channel} bits per channel` : "Unavailable"],
+      ["Frames", String(p.frame_count)],
+      ["Transparency", p.has_transparency ? "Yes" : "No"],
+      ["Resolution", dpiRec ? dpiRec.interpreted_value : "Unavailable"],
+    ];
+    items.forEach(([label, value]) => {
+      const box = document.createElement("div");
+      box.className = "malware-meta-item";
+      const lbl = document.createElement("span");
+      lbl.className = "small-copy";
+      lbl.textContent = label;
+      const val = document.createElement("span");
+      val.className = "mono tabular";
+      val.style.fontSize = "13px";
+      val.style.color = "#FFFFFF";
+      val.textContent = value;
+      box.appendChild(lbl);
+      box.appendChild(val);
+      grid.appendChild(box);
+    });
   }
 
   function renderCoverage(inv) {
@@ -432,8 +472,11 @@
     const unsupportedText = cov.unsupported_sources.length
       ? " · Unsupported: " + cov.unsupported_sources.join(", ")
       : "";
-    summaryEl.textContent = `${cov.total_records} records · ${cov.categories_found.length} categories${unsupportedText}`;
-    stageCount.textContent = `${cov.stages.length} stages`;
+    const capText = cov.format_capability
+      ? ` · Capability: ${cov.format_capability.support_level}`
+      : "";
+    summaryEl.textContent = `${cov.total_records} records · ${cov.categories_found.length} categories${capText}${unsupportedText}`;
+    stageCount.textContent = `${cov.stages.length} engines/stages`;
 
     cov.warnings.forEach((w) => {
       const div = document.createElement("div");
@@ -445,13 +488,25 @@
     cov.stages.forEach((st) => {
       const tr = document.createElement("tr");
       const notes = [
+        ...(st.errors || []),
         ...st.warnings.map((w) => w.message),
         ...st.unsupported_features,
+        ...(st.skipped_sections || []),
         ...st.limitations,
       ].join(" ");
-      [st.stage_id, st.source_standard, st.completion_state, String(st.records_extracted), notes || "—"].forEach((val, idx) => {
+      const durText = typeof st.duration_ms === "number" ? `${st.duration_ms.toFixed(1)} ms` : "—";
+      [
+        st.stage_id,
+        st.engine_name || st.source_standard,
+        st.engine_version || "—",
+        st.availability || "Available",
+        st.completion_state,
+        durText,
+        String(st.records_extracted),
+        notes || "—",
+      ].forEach((val, idx) => {
         const td = document.createElement("td");
-        if (idx === 0 || idx === 3) td.className = "mono tabular";
+        if (idx === 0 || idx === 2 || idx === 5 || idx === 6) td.className = "mono tabular";
         td.textContent = val;
         tr.appendChild(td);
       });
@@ -563,7 +618,7 @@
         nameEl.textContent = r.tag_name;
         const valEl = document.createElement("span");
         valEl.className = "meta-record-val";
-        valEl.textContent = r.interpreted_value || "(empty)";
+        valEl.textContent = r.interpreted_value || "Not interpreted";
         main.appendChild(nameEl);
         main.appendChild(valEl);
 
@@ -606,18 +661,28 @@
         body.className = "meta-record-body";
         const grid = document.createElement("div");
         grid.className = "meta-kv-grid";
-        const rawDisplay = typeof r.raw_value === "string"
-          ? r.raw_value
-          : JSON.stringify(r.raw_value);
+        let rawDisplay;
+        if (r.raw_value === null || r.raw_value === undefined) {
+          rawDisplay = "—";
+        } else if (typeof r.raw_value === "object" && !Array.isArray(r.raw_value) && "byte_length" in r.raw_value) {
+          rawDisplay = `Binary data (${r.raw_value.byte_length} bytes)`;
+        } else if (typeof r.raw_value === "string") {
+          rawDisplay = r.raw_value;
+        } else {
+          rawDisplay = JSON.stringify(r.raw_value);
+        }
         [
-          ["Source", r.source],
-          ["Category", r.category],
+          ["Source Engine", r.source_engine || r.source || "—"],
+          ["Source Container", r.source_container || "—"],
+          ["Category", r.category || "—"],
           ["Tag ID", r.tag_id || "—"],
           ["Namespace", r.namespace || "—"],
           ["Path", (r.path || []).join(" / ") || "—"],
-          ["Data Type / Status", `${r.data_type} · ${r.status}`],
-          ["Raw Value", rawDisplay ?? "—"],
-          ["Interpreted Value", r.interpreted_value || "—"],
+          ["Data Type / Status", `${r.data_type || "unknown"} · ${r.extraction_status || r.status || "Unknown"}`],
+          ["Raw Value", rawDisplay],
+          ["Interpreted Value", r.interpreted_value || "Not interpreted"],
+          ["Discovered By", Array.isArray(r.discovered_by) && r.discovered_by.length ? r.discovered_by.join(", ") : (r.source_engine || r.source || "—")],
+          ...(r.engine_disagreement ? [["Engine Disagreement", r.engine_disagreement]] : []),
           ["Limitations", r.limitations || "None"],
         ].forEach(([lbl, val]) => {
           const kv = document.createElement("div");
@@ -657,6 +722,7 @@
     const badge = $("gps-badge");
     const clearBtn = $("clear-gps-btn");
     const out = $("gps-output");
+    out.innerHTML = "";
     if (!gps) {
       const gpsDetected = Boolean(state.inspection && state.inspection.inventory && state.inspection.inventory.gps_present_indicator);
       badge.textContent = gpsDetected ? "Detected · Hidden" : "Hidden";
@@ -664,14 +730,38 @@
       out.textContent = "GPS values have not been read for display.";
       return;
     }
-    badge.textContent = gps.status;
+    badge.textContent = gps.gps_state || gps.status;
     clearBtn.classList.remove("hidden");
-    if (gps.status === "Present" && gps.latitude !== null && gps.longitude !== null) {
-      out.textContent = `Latitude: ${gps.latitude.toFixed(6)} · Longitude: ${gps.longitude.toFixed(6)}` +
-        (gps.altitude_meters !== null ? ` · Altitude: ${gps.altitude_meters.toFixed(1)} m` : "") +
+    if (gps.status === "Present" && typeof gps.latitude === "number" && typeof gps.longitude === "number") {
+      const coordLine = document.createElement("div");
+      coordLine.className = "mono tabular";
+      coordLine.style.color = "#FFFFFF";
+      coordLine.textContent = `Latitude: ${gps.latitude.toFixed(6)} · Longitude: ${gps.longitude.toFixed(6)}` +
+        (typeof gps.altitude_meters === "number" ? ` · Altitude: ${gps.altitude_meters.toFixed(1)} m` : "") +
         (gps.timestamp_utc ? ` · Timestamp: ${gps.timestamp_utc}` : "");
+      out.appendChild(coordLine);
     } else {
-      out.textContent = gps.note || gps.status;
+      const noteLine = document.createElement("div");
+      noteLine.textContent = gps.note || "No GPS coordinates were found in this image.";
+      out.appendChild(noteLine);
+    }
+
+    const extraEntries = gps.extra_properties ? Object.entries(gps.extra_properties) : [];
+    if (extraEntries.length) {
+      const extraLine = document.createElement("div");
+      extraLine.className = "small-copy";
+      extraLine.style.marginTop = "6px";
+      extraLine.textContent = "Additional GPS properties: " + extraEntries.map(([k, v]) => `${k}=${v}`).join(" · ");
+      out.appendChild(extraLine);
+    }
+
+    const rawEntries = gps.raw_tags ? Object.entries(gps.raw_tags) : [];
+    if (rawEntries.length) {
+      const rawBox = document.createElement("div");
+      rawBox.className = "small-copy mono";
+      rawBox.style.marginTop = "6px";
+      rawBox.textContent = "Raw EXIF GPS tags: " + rawEntries.map(([k, v]) => `${k}=${v}`).join(" | ");
+      out.appendChild(rawBox);
     }
   }
 
@@ -811,44 +901,84 @@
 
   async function handleMainUpload(file) {
     if (!file) return;
-    $("upload-error").classList.add("hidden");
-    const resp = await fetch("/api/inspect", {
-      method: "POST",
-      headers: apiHeaders({ "X-Filename": encodeURIComponent(file.name) }),
-      body: file,
-    });
-    const json = await resp.json();
-    if (!resp.ok) {
-      $("upload-error").textContent = json.error || "Upload validation failed.";
-      $("upload-error").classList.remove("hidden");
-      return;
-    }
-    if (state.objectUrl) URL.revokeObjectURL(state.objectUrl);
-    state.objectUrl = URL.createObjectURL(file);
-    state.sessionId = json.session_id;
-    state.inspection = json;
-    state.gpsResult = null;
-    state.elaResult = null;
-    state.histResult = null;
-    $("meta-export-status").className = "notice-bar hidden";
-    $("meta-export-status").textContent = "";
+    const errEl = $("upload-error");
+    const statusEl = $("upload-status");
+    const browseBtn = $("browse-btn");
+    const dropZoneEl = $("drop-zone");
 
-    updateStatusPills();
-    renderRecent(json.recent_records || []);
-    renderImageAnalysis();
-    renderMetadataAndAssessment();
-    renderElaScreen();
-    renderHistogramScreen();
-    renderReportsScreen();
+    errEl.classList.add("hidden");
+    errEl.textContent = "";
+    statusEl.textContent = `Inspecting "${file.name}" locally (including malware scan)...`;
+    statusEl.classList.remove("hidden");
+    browseBtn.disabled = true;
+    dropZoneEl.setAttribute("aria-busy", "true");
+
+    try {
+      const resp = await fetch("/api/inspect", {
+        method: "POST",
+        headers: apiHeaders({ "X-Filename": encodeURIComponent(file.name) }),
+        body: file,
+      });
+      let json = null;
+      try {
+        json = await resp.json();
+      } catch (_) {
+        json = null;
+      }
+      if (!resp.ok || !json) {
+        statusEl.classList.add("hidden");
+        errEl.textContent = (json && json.error) || `Upload failed (HTTP ${resp.status}).`;
+        errEl.classList.remove("hidden");
+        return;
+      }
+      if (state.objectUrl) URL.revokeObjectURL(state.objectUrl);
+      state.objectUrl = URL.createObjectURL(file);
+      state.sessionId = json.session_id;
+      state.inspection = json;
+      state.gpsResult = null;
+      if ($("gps-section")) $("gps-section").removeAttribute("open");
+      state.elaResult = null;
+      state.histResult = null;
+      $("meta-export-status").className = "notice-bar hidden";
+      $("meta-export-status").textContent = "";
+
+      updateStatusPills();
+      renderRecent(json.recent_records || []);
+      renderImageAnalysis();
+      renderMetadataAndAssessment();
+      renderElaScreen();
+      renderHistogramScreen();
+      renderReportsScreen();
+
+      const p = json.properties;
+      statusEl.textContent = `Loaded "${p.filename}" (${p.width} × ${p.height} px, ${p.image_format}). Use the sidebar or module cards to inspect.`;
+      statusEl.classList.remove("hidden");
+    } catch (err) {
+      statusEl.classList.add("hidden");
+      errEl.textContent = (err && err.message) ? `Upload failed: ${err.message}` : "Upload failed due to a local connection or processing error.";
+      errEl.classList.remove("hidden");
+    } finally {
+      browseBtn.disabled = false;
+      dropZoneEl.removeAttribute("aria-busy");
+    }
   }
 
   // Upload events
-  $("browse-btn").addEventListener("click", () => $("file-input").click());
+  $("browse-btn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    $("file-input").click();
+  });
   $("file-input").addEventListener("change", (e) => {
-    if (e.target.files && e.target.files[0]) handleMainUpload(e.target.files[0]);
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (file) handleMainUpload(file);
   });
 
   const dropZone = $("drop-zone");
+  dropZone.addEventListener("click", (e) => {
+    if (e.target.closest("button") || e.target.closest("input")) return;
+    $("file-input").click();
+  });
   dropZone.addEventListener("dragover", (e) => {
     e.preventDefault();
     dropZone.classList.add("drag-over");
@@ -876,6 +1006,7 @@
   $("expand-all-btn").addEventListener("click", () => {
     document.querySelectorAll("details.meta-group:not(#gps-section)").forEach((d) => {
       d.setAttribute("open", "");
+      d.querySelectorAll("details.meta-record").forEach((rec) => rec.setAttribute("open", ""));
     });
   });
   $("collapse-all-btn").addEventListener("click", () => {
@@ -943,17 +1074,37 @@
 
   // GPS reveal / clear
   $("reveal-gps-btn").addEventListener("click", async () => {
-    const resp = await fetch("/api/gps/reveal", { method: "POST", headers: apiHeaders() });
-    const json = await resp.json();
-    if (resp.ok) {
+    const btn = $("reveal-gps-btn");
+    const out = $("gps-output");
+    btn.disabled = true;
+    out.textContent = "Reading GPS metadata...";
+    try {
+      const resp = await fetch("/api/gps/reveal", { method: "POST", headers: apiHeaders() });
+      let json = null;
+      try {
+        json = await resp.json();
+      } catch (_) {
+        json = null;
+      }
+      if (!resp.ok || !json) {
+        out.textContent = (json && json.error) || `Unable to read GPS metadata (HTTP ${resp.status}).`;
+        return;
+      }
       state.gpsResult = json;
       renderGpsState();
       renderReportsScreen();
+    } catch (err) {
+      out.textContent = (err && err.message) ? `GPS lookup failed: ${err.message}` : "GPS lookup failed due to a local connection error.";
+    } finally {
+      btn.disabled = false;
     }
   });
   $("clear-gps-btn").addEventListener("click", async () => {
-    await fetch("/api/gps/clear", { method: "POST", headers: apiHeaders() });
+    try {
+      await fetch("/api/gps/clear", { method: "POST", headers: apiHeaders() });
+    } catch (_) {}
     state.gpsResult = null;
+    if ($("gps-section")) $("gps-section").removeAttribute("open");
     renderGpsState();
     renderReportsScreen();
   });
@@ -992,30 +1143,40 @@
   // Image Comparison
   async function uploadCompareSlot(slot, file) {
     $("cmp-error").classList.add("hidden");
-    const resp = await fetch(`/api/compare/slot?slot=${slot}`, {
-      method: "POST",
-      headers: apiHeaders({ "X-Filename": encodeURIComponent(file.name) }),
-      body: file,
-    });
-    const json = await resp.json();
-    if (!resp.ok) {
-      $("cmp-error").textContent = json.error || "Comparison upload failed.";
+    try {
+      const resp = await fetch(`/api/compare/slot?slot=${slot}`, {
+        method: "POST",
+        headers: apiHeaders({ "X-Filename": encodeURIComponent(file.name) }),
+        body: file,
+      });
+      let json = null;
+      try {
+        json = await resp.json();
+      } catch (_) {
+        json = null;
+      }
+      if (!resp.ok || !json) {
+        $("cmp-error").textContent = (json && json.error) || `Comparison upload failed (HTTP ${resp.status}).`;
+        $("cmp-error").classList.remove("hidden");
+        return;
+      }
+      state.sessionId = json.session_id;
+      const url = URL.createObjectURL(file);
+      if (slot === "a") {
+        if (state.cmpAUrl) URL.revokeObjectURL(state.cmpAUrl);
+        state.cmpAUrl = url;
+        state.cmpAInfo = json;
+      } else {
+        if (state.cmpBUrl) URL.revokeObjectURL(state.cmpBUrl);
+        state.cmpBUrl = url;
+        state.cmpBInfo = json;
+      }
+      renderCompareSlots();
+      if (state.cmpAInfo && state.cmpBInfo) await runCompare();
+    } catch (err) {
+      $("cmp-error").textContent = (err && err.message) ? `Comparison upload failed: ${err.message}` : "Comparison upload failed.";
       $("cmp-error").classList.remove("hidden");
-      return;
     }
-    state.sessionId = json.session_id;
-    const url = URL.createObjectURL(file);
-    if (slot === "a") {
-      if (state.cmpAUrl) URL.revokeObjectURL(state.cmpAUrl);
-      state.cmpAUrl = url;
-      state.cmpAInfo = json;
-    } else {
-      if (state.cmpBUrl) URL.revokeObjectURL(state.cmpBUrl);
-      state.cmpBUrl = url;
-      state.cmpBInfo = json;
-    }
-    renderCompareSlots();
-    if (state.cmpAInfo && state.cmpBInfo) await runCompare();
   }
 
   function renderCompareSlots() {
@@ -1082,8 +1243,16 @@
 
   $("cmp-a-btn").addEventListener("click", () => $("cmp-a-input").click());
   $("cmp-b-btn").addEventListener("click", () => $("cmp-b-input").click());
-  $("cmp-a-input").addEventListener("change", (e) => { if (e.target.files[0]) uploadCompareSlot("a", e.target.files[0]); });
-  $("cmp-b-input").addEventListener("change", (e) => { if (e.target.files[0]) uploadCompareSlot("b", e.target.files[0]); });
+  $("cmp-a-input").addEventListener("change", (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (f) uploadCompareSlot("a", f);
+  });
+  $("cmp-b-input").addEventListener("change", (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (f) uploadCompareSlot("b", f);
+  });
   $("swap-ab-btn").addEventListener("click", async () => {
     if (!state.sessionId) return;
     await fetch("/api/compare/swap", { method: "POST", headers: apiHeaders() });
