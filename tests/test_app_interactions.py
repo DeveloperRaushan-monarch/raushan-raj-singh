@@ -59,6 +59,7 @@ def test_home_page_renders_without_exceptions():
         "GPS Intelligence",
         "Image Comparison",
         "Error Level Analysis",
+        "RGB Histogram",
     ]
     assert len(app.file_uploader) == 3
     assert any("Select an image above" in item.value for item in app.tabs[0].info)
@@ -66,6 +67,7 @@ def test_home_page_renders_without_exceptions():
     assert any("Select a valid image before requesting GPS" in item.value for item in app.tabs[2].info)
     assert len(app.tabs[3].file_uploader) == 2
     assert any("Select a valid image before running ELA" in item.value for item in app.tabs[4].info)
+    assert any("Select a valid image before calculating its RGB histogram" in item.value for item in app.tabs[5].info)
 
 
 def test_valid_image_upload_renders_inspection_and_metadata_sections():
@@ -188,6 +190,62 @@ def test_ela_is_explicit_and_jpeg_only():
     run_app(app)
     assert "pixeltruth_ela_result" not in app.session_state
     assert any("ELA applies to JPEG images only" in item.value for item in app.tabs[4].info)
+
+
+def test_rgb_histogram_is_opt_in_and_uses_current_upload():
+    app = start_app()
+    app.file_uploader[0].set_value(("sample.png", make_png("white"), "image/png"))
+    run_app(app)
+
+    histogram_tab = app.tabs[5]
+    assert "pixeltruth_histogram_result" not in app.session_state
+    assert any(button.label == "Calculate RGB histogram" for button in histogram_tab.button)
+    next(button for button in histogram_tab.button if button.label == "Calculate RGB histogram").click()
+    run_app(app)
+
+    result = app.session_state["pixeltruth_histogram_result"]
+    assert result.pixel_count == 12 * 8
+    assert result.red[255] == 12 * 8
+    assert result.green[255] == 12 * 8
+    assert result.blue[255] == 12 * 8
+    histogram_tab = app.tabs[5]
+    assert any(item.value == "#### Combined RGB intensity distribution" for item in histogram_tab.markdown)
+
+    app.file_uploader[0].set_value(("different.png", make_png("black"), "image/png"))
+    run_app(app)
+    assert "pixeltruth_histogram_result" not in app.session_state
+
+
+def test_clearing_upload_removes_histogram_result_and_display():
+    app = start_app()
+    app.file_uploader[0].set_value(("sample.png", make_png("white"), "image/png"))
+    run_app(app)
+
+    histogram_tab = app.tabs[5]
+    next(button for button in histogram_tab.button if button.label == "Calculate RGB histogram").click()
+    run_app(app)
+
+    assert "pixeltruth_histogram_result" in app.session_state
+    assert any(
+        item.value == "#### Combined RGB intensity distribution"
+        for item in app.tabs[5].markdown
+    )
+    assert len(app.tabs[5].get("plotly_chart")) == 4
+
+    app.file_uploader[0].clear()
+    run_app(app)
+
+    assert "pixeltruth_histogram_result" not in app.session_state
+    assert "pixeltruth_histogram_source_hash" not in app.session_state
+    assert any(
+        "Select a valid image before calculating its RGB histogram" in item.value
+        for item in app.tabs[5].info
+    )
+    assert not any(
+        item.value == "#### Combined RGB intensity distribution"
+        for item in app.tabs[5].markdown
+    )
+    assert len(app.tabs[5].get("plotly_chart")) == 0
 
 
 def test_complete_supported_app_interaction_flow():

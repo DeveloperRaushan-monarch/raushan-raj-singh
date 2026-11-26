@@ -3,6 +3,7 @@
 from io import BytesIO
 
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 from PIL import Image, ImageOps
 
@@ -10,6 +11,7 @@ from core.analysis import inspect_image
 from core.comparison import compare_images
 from core.ela import ELAError, ELAResult, apply_exif_orientation, calculate_ela
 from core.gps import GPSResult, extract_gps
+from core.histogram import HistogramError, HistogramResult, calculate_rgb_histogram
 from core.models import Finding, ImageInspection, MetadataStatus
 from utils.validators import ImageValidationError, MAX_UPLOAD_BYTES, SUPPORTED_EXTENSIONS
 
@@ -36,6 +38,11 @@ def _clear_ela_state() -> None:
     st.session_state.pop("pixeltruth_ela_result", None)
     st.session_state.pop("pixeltruth_ela_source_hash", None)
     st.session_state.pop("pixeltruth_ela_parameters", None)
+
+
+def _clear_histogram_state() -> None:
+    st.session_state.pop("pixeltruth_histogram_result", None)
+    st.session_state.pop("pixeltruth_histogram_source_hash", None)
 
 
 def _render_properties(inspection: ImageInspection) -> None:
@@ -254,6 +261,108 @@ def _render_ela(inspection: ImageInspection | None, file_bytes: bytes | None) ->
     st.write(result.limitations)
 
 
+def _histogram_figure(
+    series: tuple[tuple[str, tuple[int, ...], str, str], ...],
+    *,
+    legend: bool,
+    y_axis_title: str = "Pixel count",
+) -> go.Figure:
+    figure = go.Figure()
+    intensity_values = list(range(256))
+    for label, counts, color, dash in series:
+        figure.add_trace(
+            go.Scatter(
+                x=intensity_values,
+                y=counts,
+                mode="lines",
+                name=label,
+                line={"color": color, "dash": dash, "width": 2},
+                hovertemplate="Intensity %{x}<br>Count %{y:,}<extra>%{fullData.name}</extra>",
+            )
+        )
+    figure.update_layout(
+        height=300,
+        margin={"l": 48, "r": 16, "t": 20, "b": 48},
+        paper_bgcolor="#101010",
+        plot_bgcolor="#101010",
+        font={"color": "#eeeeee"},
+        showlegend=legend,
+        legend={"orientation": "h", "y": 1.12, "x": 0},
+    )
+    figure.update_xaxes(
+        title="Intensity (0–255)",
+        range=[0, 255],
+        dtick=32,
+        gridcolor="#353535",
+        zerolinecolor="#555555",
+    )
+    figure.update_yaxes(
+        title=y_axis_title,
+        rangemode="tozero",
+        gridcolor="#353535",
+        zerolinecolor="#555555",
+    )
+    return figure
+
+
+def _render_histogram(inspection: ImageInspection | None, file_bytes: bytes | None) -> None:
+    st.write("View the distribution of decoded pixel intensities across red, green, and blue channels.")
+    if inspection is None or file_bytes is None:
+        _clear_histogram_state()
+        st.info("Select a valid image before calculating its RGB histogram.")
+        return
+
+    digest = inspection.sha256
+    if st.session_state.get("pixeltruth_histogram_source_hash") != digest:
+        _clear_histogram_state()
+
+    result: HistogramResult | None = st.session_state.get("pixeltruth_histogram_result")
+    if result is None:
+        st.caption("The combined view pools all three channel counts. Separate views use labeled monochrome line styles.")
+        if st.button("Calculate RGB histogram", type="secondary", key="calculate_rgb_histogram"):
+            try:
+                result = calculate_rgb_histogram(file_bytes, inspection.properties.filename)
+            except (HistogramError, ImageValidationError) as exc:
+                st.error(str(exc))
+                return
+            st.session_state["pixeltruth_histogram_result"] = result
+            st.session_state["pixeltruth_histogram_source_hash"] = digest
+            st.rerun()
+        st.info("Histogram analysis has not been run for this image.")
+        return
+
+    if len(set(result.frame_dimensions)) == 1:
+        dimensions_description = f"{result.width} × {result.height} pixels per frame"
+    else:
+        dimensions_description = "Frame dimensions vary"
+    st.caption(
+        f"{dimensions_description} · {result.frame_count} frame(s) · "
+        f"{result.pixel_count:,} decoded pixels"
+    )
+    st.markdown("#### Combined RGB intensity distribution")
+    combined_series = (("All RGB channel values", result.combined, "#dddddd", "solid"),)
+    st.plotly_chart(
+        _histogram_figure(combined_series, legend=True, y_axis_title="Channel-value count"),
+        width="stretch",
+        key="combined_rgb_histogram",
+    )
+
+    st.markdown("#### Individual channel distributions")
+    channel_columns = st.columns(3)
+    for column, (label, counts, dash) in zip(
+        channel_columns,
+        (("Red", result.red, "solid"), ("Green", result.green, "dash"), ("Blue", result.blue, "dot")),
+    ):
+        with column:
+            st.markdown(f"**{label} channel**")
+            figure = _histogram_figure(((label, counts, "#dddddd", dash),), legend=False)
+            st.plotly_chart(figure, width="stretch", key=f"{label.lower()}_rgb_histogram")
+
+    st.caption(result.method)
+    st.markdown("#### Analytical limitations")
+    st.write(result.limitations)
+
+
 st.set_page_config(
     page_title="PIXELTRUTH — Image Inspection",
     page_icon=None,
@@ -292,14 +401,16 @@ if uploaded is not None:
     except ImageValidationError as exc:
         _clear_gps_state()
         _clear_ela_state()
+        _clear_histogram_state()
         st.session_state.pop("pixeltruth_last_inspection", None)
         st.error(str(exc))
 else:
     _clear_gps_state()
     _clear_ela_state()
+    _clear_histogram_state()
 
-analysis_tab, metadata_tab, gps_tab, comparison_tab, ela_tab = st.tabs(
-    ["Image Analysis", "Metadata & Findings", "GPS Intelligence", "Image Comparison", "Error Level Analysis"]
+analysis_tab, metadata_tab, gps_tab, comparison_tab, ela_tab, histogram_tab = st.tabs(
+    ["Image Analysis", "Metadata & Findings", "GPS Intelligence", "Image Comparison", "Error Level Analysis", "RGB Histogram"]
 )
 with analysis_tab:
     if inspection is None or file_bytes is None:
@@ -338,3 +449,6 @@ with comparison_tab:
 
 with ela_tab:
     _render_ela(inspection, file_bytes)
+
+with histogram_tab:
+    _render_histogram(inspection, file_bytes)

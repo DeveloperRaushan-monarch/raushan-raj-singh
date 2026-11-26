@@ -42,6 +42,7 @@ class ValidatedImage:
     image_format: str
     width: int
     height: int
+    frame_dimensions: tuple[tuple[int, int], ...]
     color_mode: str
     frame_count: int
     has_transparency: bool
@@ -110,21 +111,35 @@ def validate_image_bytes(
                 width, height = probe.size
                 if width <= 0 or height <= 0:
                     raise ImageValidationError("The image has invalid dimensions.")
-                if width * height > max_image_pixels:
-                    raise ImageValidationError("The image exceeds the pixel-count safety limit.")
                 frame_count = int(getattr(probe, "n_frames", 1))
                 if frame_count < 1 or frame_count > max_frame_count:
                     raise ImageValidationError("The image exceeds the supported frame-count limit.")
-                if width * height * frame_count > max_total_frame_pixels:
-                    raise ImageValidationError("The image exceeds the total decoded-pixel limit.")
 
+                frame_dimensions = []
+                total_frame_pixels = 0
+                for index in range(frame_count):
+                    probe.seek(index)
+                    frame_width, frame_height = probe.size
+                    if frame_width <= 0 or frame_height <= 0:
+                        raise ImageValidationError("The image has invalid frame dimensions.")
+                    frame_pixels = frame_width * frame_height
+                    if frame_pixels > max_image_pixels:
+                        raise ImageValidationError("The image exceeds the pixel-count safety limit.")
+                    total_frame_pixels += frame_pixels
+                    if total_frame_pixels > max_total_frame_pixels:
+                        raise ImageValidationError("The image exceeds the total decoded-pixel limit.")
+                    frame_dimensions.append((frame_width, frame_height))
+
+                probe.seek(0)
                 probe.verify()
 
             # verify() checks the container; decode each bounded frame to catch
             # truncated/corrupt pixel data before analysis modules consume it.
             with Image.open(BytesIO(file_bytes)) as decoded:
-                for index in range(frame_count):
+                for index, expected_dimensions in enumerate(frame_dimensions):
                     decoded.seek(index)
+                    if decoded.size != expected_dimensions:
+                        raise ImageValidationError("Image frame dimensions changed during validation.")
                     decoded.load()
                 has_transparency = (
                     "A" in decoded.getbands()
@@ -154,6 +169,7 @@ def validate_image_bytes(
         image_format=detected_format,
         width=width,
         height=height,
+        frame_dimensions=tuple(frame_dimensions),
         color_mode=mode,
         frame_count=frame_count,
         has_transparency=has_transparency,

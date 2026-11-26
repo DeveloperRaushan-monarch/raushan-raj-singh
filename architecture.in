@@ -129,6 +129,14 @@ Metadata stays in the shared `MetadataField` collection and uses `source` values
 - Results include the residual PNG, mean absolute RGB difference, maximum channel difference, changed-pixel share, parameters, method, and limitations. ELA output is descriptive and cannot establish that an image was edited or manipulated.
 - No third-party dependency was added; Pillow performs the decode, recompression, and residual operations.
 
+## 6.3 Implemented Phase 3.2 RGB histogram coverage
+
+- RGB histograms are opt-in and use the existing content validation, upload, pixel, and frame-count limits for supported image formats.
+- Each frame is converted to RGB and counted in 256 intensity bins per channel, processing bounded image tiles to limit temporary allocations. The combined chart pools red, green, and blue channel-value counts; separate charts show each channel.
+- Animated images pool all decoded frames into one histogram. The results include dimensions, frame count, pixel count, counts, method, and limitations.
+- Alpha transparency is discarded during RGB conversion and embedded color profiles are not applied. Histograms are descriptive and cannot establish image authenticity or prove manipulation.
+- The interface uses the already-declared Plotly dependency with monochrome tones, line styles, labeled axes, and intensity range. No dependency was added.
+
 ## 7. Assessment orchestration
 
 Run only checks applicable to the detected/decoded image and requested features. Record skipped or unsupported checks as such. The assessment engine uses documented rules over completed check results. Missing metadata alone and an editor/software tag alone are not sufficient for NEEDS REVIEW. If the evidence cannot support a meaningful assessment, return INSUFFICIENT EVIDENCE. A successful LOW CONCERN result describes the checks performed and does not imply authenticity.
