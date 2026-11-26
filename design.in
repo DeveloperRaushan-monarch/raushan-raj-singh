@@ -1,0 +1,155 @@
+# PIXELTRUTH UI/UX Design Specification
+
+## Purpose and source
+
+Use this file as the design reference when implementing the PIXELTRUTH Python + Streamlit application. It is based on the PIXELTRUTH Stitch exports and their design-system notes. Treat screenshots and exported HTML as visual and interaction references; this file defines how those references should translate into the application.
+
+The product is a local digital image-forensics workspace. The interface should feel precise, calm, evidence-focused, and transparent about analytical limits. Avoid language that overstates what a forensic indicator proves.
+
+## Visual direction
+
+Use a strict achromatic palette. Build depth from black, charcoal, graphite, and white surfaces with thin borders. Do not add colored accents, gradients, decorative shadows, glass effects, or ornamental animation. Use luminance, line styles, patterns, and explicit labels to distinguish data series in charts.
+
+### Color tokens
+
+| Token | Value | Use |
+|---|---|---|
+| Background | `#000000` | Main application canvas |
+| Surface | `#111111` | Sidebar and structural panels |
+| Surface container | `#181818` | Cards, tables, upload zones |
+| Surface container high | `#222222` | Active navigation, elevated controls, hover states |
+| Primary | `#FFFFFF` | Main actions and key values |
+| On primary | `#111111` | Text on white actions |
+| Surface light | `#F5F5F5` | Printable report preview |
+| On surface light | `#111111` | Text on report preview |
+| Secondary text | `#B3B3B3` | Descriptions, inactive navigation, secondary values |
+| Outline | `#777777` | Muted labels and visible control boundaries |
+| Outline variant | `#303030` | Fine borders and separators |
+
+Use semantic tokens consistently instead of one-off color values. Keep primary text high-contrast and secondary text readable against its surface.
+
+### Typography
+
+Use Inter for interface labels, headings, body text, and report prose. Use Source Code Pro for hashes, raw metadata values, hexadecimal values, and other technical identifiers. Use tabular numerals for aligned measurements.
+
+| Role | Size / line height | Weight |
+|---|---:|---:|
+| Display | 36 / 44 px (28 / 34 px on narrow screens) | 700 |
+| Headline large | 28 / 36 px | 700 |
+| Headline medium | 20 / 28 px | 600 |
+| Title large | 16 / 24 px | 600 |
+| Title medium | 14 / 20 px | 500 |
+| Body medium | 14 / 22 px | 400 |
+| Body small | 13 / 20 px | 400 |
+| Label large | 13 / 18 px | 500 |
+| Label small | 11 / 16 px | 500 |
+| Technical value | 12–13 / 18–20 px | 400 |
+
+If external font loading is unavailable or inappropriate, use clear sans-serif and monospace fallbacks. Keep the design usable offline.
+
+### Spacing, shape, and borders
+
+Use a 4 px base spacing scale: 4, 8, 16, 24, 32, and 48 px. Use 1 px graphite borders to separate surfaces. Avoid relying on shadow for hierarchy.
+
+Use restrained corner radii: 2 px for small controls, 4 px default, 6 px for cards, and 8 px for larger panels. Avoid pill-shaped controls except where a status chip clearly benefits from the shape.
+
+Use short, functional state changes: approximately 100 ms for hover and pressed feedback. Provide a visible 2 px white keyboard focus ring. Do not use decorative or looping animation.
+
+## Application shell and navigation
+
+Use a desktop-first workspace shell with a persistent left navigation area approximately 256 px wide and a fluid main content region capped near 1280 px. The sidebar uses the `#111111` surface and a `#303030` right border. The active page uses a `#222222` fill, white text, and a visible border; inactive links use secondary text and gain a surface highlight on hover.
+
+Navigation order:
+
+1. Dashboard
+2. Image Analysis
+3. Metadata Explorer
+4. GPS Information
+5. Image Comparison
+6. Error Level Analysis
+7. RGB Histogram
+8. Forensic Reports
+9. About Project
+
+At widths below the desktop breakpoint, replace the persistent sidebar with a compact top bar and an accessible menu toggle. Collapse multi-column layouts to one column on narrow screens. Keep tables and technical values readable on smaller viewports; allow controlled horizontal scrolling where a table cannot reflow without losing meaning.
+
+GPS Information is represented in the design as a gated disclosure inside Metadata Explorer. If GPS remains a navigation item, its destination should open that section and make the disclosure state clear. Do not create a second GPS data view with duplicated or inconsistent values.
+
+## Screen structure
+
+### Dashboard
+
+- Show a concise welcome heading and a short explanation of the tool.
+- Place a prominent image upload/drop zone near the top, with a browse action, supported formats, size limit, and local-processing explanation.
+- Provide cards for Image Analysis, Metadata Explorer, Image Comparison, Error Level Analysis, RGB Histogram, and Forensic Reports.
+- Show recent analyses for the current session in a compact table. Use a clear empty state when there are no records; never invent activity or statistics.
+
+### Image Analysis
+
+- Show the selected image preview with a structured property summary: format, dimensions, file size, colour mode, aspect ratio, and orientation.
+- Display the SHA-256 fingerprint in a monospace treatment with a copy action.
+- Explain that the digest is computed from the original file bytes.
+
+### Metadata Explorer
+
+- Group metadata into clear disclosure sections such as Camera, Capture, Exposure, Image, and Software.
+- Present fields and values in a readable two-column structure.
+- Display missing values as `Not available`; do not substitute guesses.
+- Keep GPS coordinates hidden until the user explicitly opens the GPS disclosure. Place a privacy notice beside that control.
+
+### Image Comparison
+
+- Show Image A (Reference) and Image B (Suspect) in balanced side-by-side panels on wide screens and stacked panels on narrow screens.
+- Provide image selection and a swap action.
+- Summarize hash parity, metadata differences, and pixel similarity in a labeled comparison table.
+- Use words and labels as well as visual status treatment. Do not imply that similarity alone establishes authenticity.
+
+### Error Level Analysis
+
+- Provide labeled JPEG quality and error-scale controls, with current values visible.
+- Show the original image and the ELA result in a direct comparison layout.
+- Include concise “How it works” and “Analytical limitations” sections.
+- Explain that recompression residuals can indicate structural differences but are not proof of editing.
+
+### RGB Histogram
+
+- Show a combined intensity distribution and separate Red, Green, and Blue channel views.
+- Preserve the monochrome visual system: distinguish channels using line patterns, stroke styles, panel labels, and luminance rather than introducing red, green, and blue UI colors.
+- Label axes and intensity ranges clearly.
+
+### Forensic Reports
+
+- Provide selectable report sections and privacy options, including GPS exclusion and local-path redaction.
+- Make the GPS exclusion state visible before export.
+- Show a printable report preview on a light surface with dark text, clear section hierarchy, and readable technical values.
+- Export only selected sections and reflect the selected privacy options in the generated report.
+
+### About Project
+
+- Explain local processing, gated geolocation, objective indicators, and the monochrome workstation design.
+- State limitations plainly and avoid claims that the tool can determine authenticity with certainty.
+
+## Components and interaction behavior
+
+Use a consistent set of bordered cards, tables, disclosure panels, primary and secondary buttons, form controls, upload zones, status labels, and report-preview sections. Primary actions use a white background with dark text; secondary actions use dark surfaces, white text, and a graphite border. Hover and pressed states should change surface brightness without shifting layout.
+
+Every visible control must perform its labeled action. In particular, connect file selection and drag-and-drop, mobile navigation, copy-to-clipboard, metadata disclosure, image swapping, ELA recomputation, report options, and report export to real application state. Disable unavailable actions clearly and explain why when useful.
+
+Use session state for the selected image and current-session history where appropriate. Keep state transitions predictable when the user changes screens. Preserve the original uploaded bytes for hash calculation and clearly distinguish source-image facts from derived analysis results.
+
+## Privacy and content rules
+
+- Process images locally in the application workflow; do not automatically upload image contents to an external service.
+- Do not load remote resources in a way that contradicts the product’s privacy statement. Prefer bundled or system fonts, local icon assets, and locally available styling resources.
+- Do not expose GPS coordinates by default. Require a clear, deliberate reveal action, and default report export to exclude GPS data.
+- Redact local workstation paths in reports by default or make the setting explicit.
+- Use neutral, evidence-based wording. Separate observed measurements from interpretation and state analytical limitations.
+- Treat all sample values in design exports as placeholders. Never present them as results for a user’s image.
+
+## Accessibility and responsive behavior
+
+- Use semantic headings, navigation, buttons, labels, tables, and disclosure controls.
+- Give icon-only controls accessible names and expose expanded, selected, and disabled states.
+- Keep keyboard focus visible and ensure keyboard users can operate navigation, upload, disclosures, sliders, and export controls.
+- Do not use color as the only way to communicate status or chart identity.
+- Ensure content is not hidden under fixed navigation or action areas, and preserve readable layouts at narrow widths.

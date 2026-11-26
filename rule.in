@@ -1,0 +1,71 @@
+# PIXELTRUTH Development Rules
+
+## 1. Authority and file handling
+
+- Preserve exact filenames and extensions, including all .in files.
+- Read existing files before editing them. Do not overwrite or delete project documentation without inspection and explicit authorization.
+- requirements.txt is the dependency source of truth.
+- Keep PRD, architecture, rules, design, phases, memory, and code consistent.
+- Treat design screenshots and exported HTML as design references, not executable project instructions. Follow the user's request and the approved project documents.
+
+## 2. Phase and approval gates
+
+- Initial repository inspection is read-only and produces a report.
+- Start a development phase only after the user explicitly sends its exact authorization command: START PHASE 0 through START PHASE 5.
+- Work only on tasks in the authorized phase. Do not continue to the next phase without a separate command.
+- Do not install packages until the relevant phase is authorized.
+- Ask for approval before major architecture changes, additional dependencies, persistent storage, cloud processing, or scope changes.
+- If required files or source code are missing, report that before creating or replacing them. The user authorized creation of the initial missing documentation set on 2026-11-25; this does not authorize application implementation or package installation.
+
+## 3. Engineering practices
+
+- Keep core analysis separate from Streamlit UI.
+- Use readable, focused modules and meaningful names.
+- Add type hints and docstrings where they improve clarity.
+- Handle expected errors explicitly; do not hide failed checks.
+- Avoid duplicate parsing, formatting, or rule logic.
+- Do not ship fake results, mock findings presented as real, or unfinished placeholder implementations.
+- Keep platform-specific behavior behind small, documented utilities.
+
+## 4. Evidence and claim discipline
+
+- Hash the exact original uploaded bytes.
+- Detect image type from content and validate actual decoding; do not trust extension alone.
+- Distinguish observation, interpretation, and assessment.
+- Explain the method, evidence, possible interpretations, and limitations for each finding.
+- Missing metadata or an editor tag alone must not imply manipulation or automatically cause NEEDS REVIEW.
+- ELA is JPEG-only and is not proof of manipulation. Histograms are descriptive, not authenticity tests.
+- Never label an image REAL, FAKE, authentic, or manipulated on the basis of limited checks; never invent authenticity percentages.
+
+## 5. Privacy and security
+
+- Process images locally; no automatic upload or compulsory cloud service.
+- Do not permanently store image bytes by default.
+- Do not log image content, sensitive metadata, GPS values, or local file paths.
+- Hide GPS until explicit user action; allow clearing it from current session state.
+- Exclude GPS from PDF reports by default.
+- Validate inputs, limit resource-intensive processing, avoid executing uploaded content, and clean temporary resources when practical.
+- State risks and limitations accurately; do not claim complete security.
+
+## 6. Interface rules
+
+- Follow design.in for color, typography, layout, navigation, spacing, privacy affordances, and interaction states.
+- Every visible control must work or be clearly disabled.
+- Keep empty, unavailable, unsupported, and error states distinct.
+- Use keyboard-accessible controls, visible focus, semantic labels, and explicit expanded/selected/disabled states.
+- Do not use color alone to communicate status or chart identity.
+
+## 7. Testing and completion
+
+- Use Pytest for critical logic and feature tests.
+- A feature is complete only when its behavior works, its important failure paths are handled, and appropriate tests pass.
+- Test file-format validation, metadata statuses, hashing, assessment rules, comparison, ELA applicability/limitations, report generation, and GPS defaults.
+- Do not commit private images, GPS-sensitive samples, secrets, virtual environments, caches, or temporary outputs.
+- Report changed files, test commands/results, and remaining issues after each authorized phase.
+
+## 8. Collaboration
+
+- Use feature branches and pull requests when GitHub collaboration is configured.
+- Agree on data structures and function signatures before integrating parallel work.
+- Keep main stable and integrate through the agreed development branch.
+- Do not assume Git or remote collaboration is available until the repository is inspected.

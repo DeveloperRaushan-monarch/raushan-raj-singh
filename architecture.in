@@ -1,0 +1,133 @@
+# PIXELTRUTH Software Architecture
+
+## 1. Status and scope
+
+This is the initial architecture specification derived from the PIXELTRUTH master prompt. The current workspace had no application source, Git metadata, or existing architecture file at the time this document was created. The module layout below is therefore the proposed baseline; inspect the actual project before implementing it. Do not migrate or restructure existing code without review and approval.
+
+## 2. Architectural goals
+
+- Keep image analysis independent of Streamlit wherever practical.
+- Keep processing local and in memory by default.
+- Separate file validation, properties, metadata, integrity rules, assessment, comparison, analysis, reporting, and presentation.
+- Make each finding explainable and traceable to observed evidence.
+- Keep optional or unsupported analyses explicit.
+- Use shared typed data structures and avoid duplicate parsing or formatting logic.
+
+## 3. Proposed project structure
+
+```text
+app.py
+pages/
+    dashboard.py
+    image_analysis.py
+    metadata_explorer.py
+    comparison.py
+    ela.py
+    histogram.py
+    reports.py
+    about.py
+core/
+    __init__.py
+    image_info.py
+    metadata.py
+    metadata_integrity.py
+    metadata_consistency.py
+    gps.py
+    hashing.py
+    comparison.py
+    ela.py
+    histogram.py
+    analysis.py
+    assessment.py
+    report.py
+components/
+    __init__.py
+utils/
+    __init__.py
+    validators.py
+    formatting.py
+    security.py
+tests/
+    test_validators.py
+    test_image_info.py
+    test_metadata.py
+    test_hashing.py
+    test_integrity.py
+    test_assessment.py
+    test_comparison.py
+    test_ela.py
+    test_report.py
+requirements.txt
+prd.in
+architecture.in
+rule.in
+phases.in
+design.in
+memory.in
+```
+
+Use only modules justified by actual responsibilities. Keep the proposed layout adaptable to the inspected repository and Streamlit version.
+
+## 4. Module responsibilities
+
+- Application interface: navigation, upload handling, session state, rendering, and user feedback. It calls core services and contains no forensic rules.
+- Validators/security: size and resource limits, content checks, safe decoding setup, and normalized validation errors.
+- Image info: detected format and decoded image properties.
+- Metadata and GPS: extraction, normalized field status, raw/normalized values, and deliberate GPS disclosure.
+- Metadata integrity/consistency: deterministic checks that produce structured findings and do not make authenticity claims.
+- Hashing: SHA-256 over the exact original byte sequence.
+- Comparison: pairwise property, hash, metadata, and supported visual comparisons.
+- ELA: JPEG-only recompression residual calculation with explicit parameters and applicability.
+- Histogram: channel distributions and summary data.
+- Analysis/assessment: orchestrate applicable checks and return findings plus one of the three defined assessment labels.
+- Reporting: create a PDF from supplied analysis results and privacy/report options; it must not rerun hidden analysis or independently reinterpret results.
+- Components/formatting: reusable Streamlit presentation widgets and value formatting only.
+
+## 5. Data flow and storage
+
+1. Streamlit receives the upload as bytes.
+2. Validation checks configured byte, pixel, and processing limits before expensive operations.
+3. A single analysis context retains original bytes for hashing and safe decoding for properties/analysis.
+4. Core modules return plain data objects; they do not depend on Streamlit session objects.
+5. The interface stores only the current session's selected inputs and results unless the user explicitly exports a report.
+6. Report generation consumes the analysis result and selected sections/privacy options, returning PDF bytes for download.
+
+Do not write uploaded images to permanent storage by default. Avoid storing redundant copies. If temporary files become necessary for a library, create them securely and remove them in cleanup paths.
+
+## 6. Shared data contracts
+
+Finalize concrete types during implementation, but keep these concepts consistent across modules:
+
+- ImageInput: original bytes, display name, and detected format; never trust the extension as the detected format.
+- ImageProperties: file size, format/MIME, dimensions, aspect ratio, resolution, color mode, bit depth when reliable, frame count, and transparency, each with an explicit unavailable state where needed.
+- MetadataField: canonical key, display label, raw value when safe, normalized value, and status: Present, Missing, Invalid, Unsupported, or Unavailable.
+- Finding: stable ID, category, title, relevance/severity, observed evidence, explanation, possible interpretations, limitations, and next check.
+- CheckResult: check identifier, applicability, completion state, method/parameters, findings, and non-sensitive errors.
+- Assessment: one of LOW CONCERN, NEEDS REVIEW, or INSUFFICIENT EVIDENCE with an explanation linked to check results.
+- AnalysisResult: image properties, metadata fields, hash, check results, findings, assessment, and analysis timestamp.
+
+Use deterministic serialization-friendly values for PDF generation. Do not place uploaded bytes or hidden GPS coordinates in logs or ordinary diagnostic messages.
+
+## 7. Assessment orchestration
+
+Run only checks applicable to the detected/decoded image and requested features. Record skipped or unsupported checks as such. The assessment engine uses documented rules over completed check results. Missing metadata alone and an editor/software tag alone are not sufficient for NEEDS REVIEW. If the evidence cannot support a meaningful assessment, return INSUFFICIENT EVIDENCE. A successful LOW CONCERN result describes the checks performed and does not imply authenticity.
+
+## 8. Error handling
+
+Core functions should return typed results or raise narrowly scoped exceptions that the application layer can translate into plain user messages. Preserve useful technical context in development diagnostics without exposing internal paths, file bytes, or sensitive metadata to users. A failed optional check must not erase successful properties or checks.
+
+## 9. Dependency roles
+
+Use only dependencies declared in requirements.txt: Streamlit for interface; Pillow and ExifRead for image/metadata inspection; NumPy and OpenCV Headless for supported array/image analysis; Pandas and Plotly for tables/charts when they materially help; ReportLab for PDF generation; Pytest for tests. Avoid introducing another package without a documented need and authorization. Confirm each package's actual capabilities and cross-platform behavior before claiming a feature.
+
+## 10. Cross-platform and privacy decisions
+
+- Use Python 3.11 as the target runtime.
+- Do not depend on machine-specific paths or shell commands.
+- Do not send image bytes or metadata to external services.
+- Prefer local or system fonts and local assets so the interface does not require remote resource requests.
+- Keep GPS access explicit and report exclusion enabled by default.
+
+## 11. Architecture decisions requiring review
+
+Before implementation, inspect the actual repository and record whether this structure fits. Obtain approval before changing an established architecture, adding cloud services, adding persistent storage, changing the supported-format scope, or introducing a new dependency.

@@ -1,0 +1,132 @@
+# PIXELTRUTH Product Requirements Document
+
+## 1. Product summary
+
+PIXELTRUTH is a local-first image metadata inspection and digital forensics workspace. It helps a user inspect image properties and available metadata, calculate file fingerprints, compare images, run selected descriptive analyses, review explainable integrity indicators, and export a report.
+
+PIXELTRUTH reports observations and limitations. It does not decide whether an image is real, fake, authentic, or manipulated based on limited metadata or image analysis.
+
+## 2. Goals
+
+- Inspect image properties and supported metadata.
+- Identify missing, invalid, inconsistent, and unsupported metadata without treating absence alone as suspicious.
+- Calculate SHA-256 from the exact original uploaded bytes.
+- Compare two files using file, image, metadata, hash, and supported visual measures.
+- Provide documented JPEG-only Error Level Analysis (ELA) and descriptive RGB histograms.
+- Present deterministic, explainable findings and a three-state assessment.
+- Produce a downloadable PDF report with GPS excluded by default.
+- Process files locally, without automatic uploads or permanent image storage by default.
+- Explain methods, evidence, possible interpretations, and limitations in clear language.
+
+## 3. Non-goals and claims boundary
+
+- No REAL/FAKE or authentic/manipulated verdict.
+- No authenticity percentage or other unsupported probability score.
+- No claim that missing metadata proves deletion, editing, or tampering.
+- No claim that an ELA pattern or histogram proves manipulation.
+- No cloud processing, paid API, or compulsory online service.
+- HEIC/HEIF are future formats, not initial support.
+
+## 4. Users and primary workflows
+
+Primary users are people who need to inspect an image and understand the limits of its file properties and metadata. Typical workflows:
+
+1. Select a supported file, review validation, inspect its properties, hash, and metadata.
+2. Open GPS data deliberately when needed, with a location privacy notice.
+3. Compare two images and review the measurements and their limitations.
+4. Run a supported analysis (ELA only for JPEG; histograms for decoded supported images).
+5. Review integrity findings and assessment, then export a privacy-aware PDF.
+
+## 5. Supported formats and upload behavior
+
+Initial formats: JPEG/JPG, PNG, WEBP, TIFF, BMP, and GIF. A format is reported as supported only after content detection, decoding, relevant feature handling, and tests are implemented. Optional HEIC/HEIF support is out of initial scope.
+
+The application must:
+
+- Validate file content and decoded image data; never trust the filename extension alone.
+- Enforce a documented upload size and processing-resource limit.
+- Handle corrupt, truncated, unsupported, oversized, and malformed files with clear errors.
+- Identify the actual detected format and distinguish it from the filename extension.
+- Avoid executing uploaded content and avoid exposing internal paths.
+- Process in memory by default and avoid permanent storage.
+
+## 6. Functional requirements
+
+### 6.1 Image properties
+
+Where reliable, show file name, file size, detected format, MIME type, width, height, aspect ratio, resolution, color mode, bit depth, animation frame count, and transparency. Each unavailable value must be labeled accurately rather than inferred.
+
+### 6.2 Metadata extraction
+
+Extract available camera manufacturer/model, capture timestamp, editing software, exposure time, aperture, ISO, focal length, orientation, flash information, color space, and supported EXIF, XMP, and IPTC fields. Unsupported metadata types must be labeled unsupported; absence must not be presented as proof of removal.
+
+Each metadata field has one of these statuses: Present, Missing, Invalid, Unsupported, or Unavailable. Preserve the raw value where safe and provide a formatted display value without losing its source meaning.
+
+### 6.3 SHA-256
+
+Calculate SHA-256 from the original uploaded file bytes, show the complete digest, and provide a copy action. Explain that matching hashes indicate identical file contents; different hashes do not necessarily mean different visual content.
+
+### 6.4 Metadata integrity and consistency
+
+Check metadata availability, invalid values, inconsistent related fields, unsupported types, and unusual structures only where a documented reliable rule exists. Each finding contains:
+
+- Finding ID and category.
+- Title and relevance/severity.
+- Observed evidence.
+- Explanation and possible interpretations.
+- Confidence limitations.
+- Recommended next check.
+
+Separate observed facts from interpretations. Do not assert intentional metadata removal without reliable supporting evidence. Missing metadata alone and an editing-software tag alone must not automatically trigger NEEDS REVIEW.
+
+### 6.5 GPS privacy
+
+GPS values remain hidden until the user explicitly requests them. Explain the location privacy impact before or alongside disclosure. Allow clearing GPS values from the current session. Exclude coordinates from reports by default and reflect the selected privacy setting in the report.
+
+### 6.6 Image comparison
+
+Compare detected formats, file sizes, dimensions, image properties, available metadata, SHA-256 values, and visual similarity measures where implemented and supported. Explain each difference. Similarity is not proof that files are identical originals.
+
+### 6.7 Error Level Analysis
+
+Support documented JPEG-only ELA. Display the result, method parameters, explanation, and limitations. Never silently apply JPEG-specific analysis to other formats and never describe ELA as proof of manipulation.
+
+### 6.8 RGB histogram
+
+Show red, green, blue, and combined intensity distributions with clear labels, axes, and explanations. Histograms are descriptive tools, not authenticity tests.
+
+### 6.9 Forensic assessment
+
+Every completed inspection returns exactly one assessment label:
+
+- LOW CONCERN — No significant irregularities were detected in checks successfully performed. This does not guarantee authenticity.
+- NEEDS REVIEW — Meaningful inconsistencies or unusual findings justify further examination. This is not proof of manipulation.
+- INSUFFICIENT EVIDENCE — Available information is incomplete, unsupported, or insufficient for a meaningful assessment.
+
+Assessment logic must be deterministic, modular, documented, explainable, and tested. Unsupported checks do not count as successful checks. Do not calculate fake authenticity percentages or confuse observations with conclusions.
+
+### 6.10 PDF report
+
+Generate a downloadable report containing a report ID, analysis date/time, image identification, image properties, metadata summary, integrity indicators, findings, assessment, methods used, limitations, and SHA-256. Exclude GPS coordinates by default. Respect selected sections and privacy options. Report generation must not leak local workstation paths unless the user explicitly chooses otherwise.
+
+## 7. User experience requirements
+
+Use design.in as the interface source of truth: monochrome palette, persistent desktop navigation, responsive compact navigation, high-contrast text, restrained borders, labeled controls, visible keyboard focus, explicit GPS disclosure, and no fabricated history or analysis results. Every visible control must perform its described action or be clearly disabled. Present empty, unsupported, and error states explicitly.
+
+## 8. Privacy, safety, and performance
+
+- No automatic upload or permanent file storage by default.
+- Do not log file contents or sensitive metadata.
+- Keep GPS hidden and exclude it from reports by default.
+- Limit file size, pixel count, frame count, and expensive processing with documented safeguards.
+- Handle malformed data and library errors without crashing the whole application.
+- Clean temporary resources when practical.
+- Do not claim all risks are eliminated.
+
+## 9. Acceptance criteria
+
+The product is ready for demonstration when supported formats are content-validated and tested; properties, metadata statuses, and hashes are computed from the selected file; unsupported checks are stated; findings and assessments follow deterministic documented rules; GPS disclosure and report defaults protect location data; PDF content reflects selected settings; all visible controls work; and tests cover valid, malformed, unsupported, inconsistent, and privacy-sensitive cases.
+
+## 10. Constraints
+
+Target macOS and Windows. Use Python 3.11 and the dependencies in requirements.txt. Do not install packages until the relevant phase is authorized. Follow architecture.in, rule.in, phases.in, design.in, and memory.in. See the supplied PIXELTRUTH master prompt for the full project execution and approval gates.

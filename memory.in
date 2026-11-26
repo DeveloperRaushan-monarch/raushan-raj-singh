@@ -1,0 +1,35 @@
+# PIXELTRUTH Project Memory
+
+## Project intent
+
+PIXELTRUTH is a local-first Python 3.11 + Streamlit image metadata inspection and digital forensics application. It must report explainable evidence and limitations, not certify authenticity or manipulation.
+
+## Durable decisions from the supplied master prompt
+
+- Target macOS and Windows; use free/open-source Python dependencies and no paid APIs or compulsory cloud services.
+- Keep core analysis independent from Streamlit where practical.
+- Supported initial formats: JPEG/JPG, PNG, WEBP, TIFF, BMP, GIF. Optional HEIC/HEIF is future work.
+- Hash the exact uploaded bytes with SHA-256.
+- GPS is hidden until explicit user action and excluded from reports by default.
+- ELA is JPEG-only; histograms are descriptive; missing metadata alone is not proof of manipulation.
+- Assessment labels are LOW CONCERN, NEEDS REVIEW, and INSUFFICIENT EVIDENCE. No REAL/FAKE labels or authenticity percentages.
+- No permanent image storage by default; do not automatically upload, log image contents, or expose internal paths.
+- requirements.txt is the dependency source of truth. Do not install packages until the relevant phase is authorized.
+- Development is gated by explicit START PHASE 0 through START PHASE 5 commands. Stop and report after each authorized phase.
+
+## Current workspace facts
+
+- Workspace path: /Users/raushan/Desktop/pixeltruth.
+- The user authorized a greenfield Phase 0 scaffold. The workspace now contains the requested directories, app.py, README.md, LICENSE notice, .gitignore, and project documents. No forensic functionality, feature modules, or tests have been implemented.
+- Python 3.11.0 is available at /usr/local/bin/python3.11. The project-local .venv was created earlier and its requirements were installed under the user's earlier explicit authorization. Verified versions: Streamlit 1.67.0, Pillow 13.0.0, ExifRead 3.5.1, OpenCV Headless 5.1.0.95, NumPy 2.4.6, Pandas 3.1.1, Plotly 7.2.0, ReportLab 5.1.1, and Pytest 9.2.0. pip check reported no broken requirements. No dependency installation was performed during Phase 0.
+- The local Git repository has main and develop branches, with no remote configured. The .gitignore excludes .venv, caches, secrets, generated outputs, and sample image contents.
+- The related Stitch exports were found in a sibling Desktop folder, not inside this workspace. design.in was created from those design references in the previous user-authorized task.
+- The initial documentation set was created from the supplied master prompt and design.in. Phase 0 is complete; see phases.in.
+
+## Next required context
+
+Next phase: wait for explicit START PHASE 1 authorization before implementing image upload, validation, properties, metadata extraction, or hashing. Do not infer feature completion from the Phase 0 app shell.
+
+## Update rule
+
+Update this file after every completed development phase with decisions, implementation status, test results, and remaining issues. Do not record a phase as complete until phases.in exit criteria are satisfied.
