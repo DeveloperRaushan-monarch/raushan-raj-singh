@@ -35,12 +35,17 @@ class XMPReadError(ValueError):
 class XMPUnsupportedLocationError(ValueError):
     """XMP was detected in a storage location this parser does not decode."""
 
+    def __init__(self, message: str, partial_packet: bytes | None = None):
+        super().__init__(message)
+        self.partial_packet = partial_packet
+
 
 def _jpeg_xmp(file_bytes: bytes) -> bytes | None:
     if not file_bytes.startswith(b"\xff\xd8"):
         raise XMPReadError("JPEG marker stream is malformed.")
     offset = 2
     has_extended_xmp = False
+    standard_packet: bytes | None = None
     while offset < len(file_bytes):
         if file_bytes[offset] != 0xFF:
             raise XMPReadError("JPEG marker stream is malformed.")
@@ -61,13 +66,16 @@ def _jpeg_xmp(file_bytes: bytes) -> bytes | None:
             raise XMPReadError("JPEG segment length is invalid or truncated.")
         payload = file_bytes[offset + 2 : offset + segment_length]
         if marker == 0xE1 and payload.startswith(XMP_JPEG_HEADER):
-            return payload[len(XMP_JPEG_HEADER) :]
+            standard_packet = standard_packet or payload[len(XMP_JPEG_HEADER) :]
         if marker == 0xE1 and payload.startswith(XMP_JPEG_EXTENDED_HEADER):
             has_extended_xmp = True
         offset += segment_length
     if has_extended_xmp:
-        raise XMPUnsupportedLocationError("Extended XMP is detected but not reassembled by this parser.")
-    return None
+        raise XMPUnsupportedLocationError(
+            "Extended XMP fragments are detected but not reassembled by this parser.",
+            partial_packet=standard_packet,
+        )
+    return standard_packet
 
 
 def _webp_xmp(file_bytes: bytes) -> bytes | None:
@@ -176,10 +184,22 @@ def extract_xmp(file_bytes: bytes, image_format: str) -> tuple[MetadataField, ..
                 packet_note = None
                 property_status = MetadataStatus.MISSING
         except XMPUnsupportedLocationError as exc:
-            packet_status = MetadataStatus.UNSUPPORTED
-            packet_note = str(exc)
-            property_status = MetadataStatus.UNSUPPORTED
-            values = {}
+            if exc.partial_packet is None:
+                packet_status = MetadataStatus.UNSUPPORTED
+                packet_note = str(exc)
+                property_status = MetadataStatus.UNSUPPORTED
+                values = {}
+            else:
+                try:
+                    values = _xml_values(exc.partial_packet)
+                    packet_status = MetadataStatus.PRESENT
+                    packet_note = str(exc)
+                    property_status = MetadataStatus.MISSING
+                except XMPReadError as parse_exc:
+                    packet_status = MetadataStatus.INVALID
+                    packet_note = str(parse_exc)
+                    property_status = MetadataStatus.UNAVAILABLE
+                    values = {}
         except XMPReadError as exc:
             packet_status = MetadataStatus.INVALID if "malformed" in str(exc) or "DTD" in str(exc) or "entity" in str(exc) else MetadataStatus.UNAVAILABLE
             packet_note = str(exc)

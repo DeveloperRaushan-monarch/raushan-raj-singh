@@ -105,6 +105,18 @@ def test_jpeg_extended_xmp_is_explicitly_unsupported():
     assert "not reassembled" in fields["xmp"].note
 
 
+def test_standard_xmp_is_retained_and_extended_fragment_limitation_is_shown():
+    data = add_jpeg_segments(
+        make_jpeg(),
+        jpeg_segment(0xE1, XMP_JPEG_HEADER + XMP_XML),
+        jpeg_segment(0xE1, XMP_JPEG_EXTENDED_HEADER + b"opaque extended packet"),
+    )
+    fields = fields_by_key(data, "JPEG")
+    assert fields["xmp"].status is MetadataStatus.PRESENT
+    assert fields["xmp_creator"].value == "Ada Example; Lin Example"
+    assert "not reassembled" in fields["xmp"].note
+
+
 def test_absent_xmp_and_iptc_are_missing_and_bmp_is_unsupported():
     fields = fields_by_key(make_jpeg(), "JPEG")
     assert fields["xmp"].status is MetadataStatus.MISSING
