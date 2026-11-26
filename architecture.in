@@ -121,6 +121,14 @@ Metadata stays in the shared `MetadataField` collection and uses `source` values
 - IPTC: IPTC-IIM datasets in JPEG Photoshop APP13 `8BIM` resource 0x0404 and TIFF tag 33723. The parser extracts common headline, caption, repeated keywords, byline, copyright, date, city, sublocation, and country datasets, with bounds checks on resource and dataset lengths.
 - BMP, GIF, and other formats are unsupported for XMP/IPTC. Only the listed storage locations are parsed; detected JPEG Extended XMP is marked Unsupported, while other unrecognized locations may be indistinguishable from absent metadata and can appear as Missing. Malformed content is Invalid and parser failures are Unavailable. These statuses do not imply manipulation.
 
+## 6.2 Implemented Phase 3.1 ELA coverage
+
+- ELA is opt-in and accepts only content-detected, fully validated JPEG files.
+- Recompress the EXIF-orientation-adjusted decoded RGB pixels once at the selected JPEG quality, calculate absolute per-channel differences, and amplify the residual for display.
+- JPEG quality is configurable from 50 to 100; error scale is configurable from 1× to 20×. Processing is capped at 20 megapixels before full decode; larger inputs are rejected rather than resized.
+- Results include the residual PNG, mean absolute RGB difference, maximum channel difference, changed-pixel share, parameters, method, and limitations. ELA output is descriptive and cannot establish that an image was edited or manipulated.
+- No third-party dependency was added; Pillow performs the decode, recompression, and residual operations.
+
 ## 7. Assessment orchestration
 
 Run only checks applicable to the detected/decoded image and requested features. Record skipped or unsupported checks as such. The assessment engine uses documented rules over completed check results. Missing metadata alone and an editor/software tag alone are not sufficient for NEEDS REVIEW. If the evidence cannot support a meaningful assessment, return INSUFFICIENT EVIDENCE. A successful LOW CONCERN result describes the checks performed and does not imply authenticity.

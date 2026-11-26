@@ -8,6 +8,7 @@ from PIL import Image, ImageOps
 
 from core.analysis import inspect_image
 from core.comparison import compare_images
+from core.ela import ELAError, ELAResult, apply_exif_orientation, calculate_ela
 from core.gps import GPSResult, extract_gps
 from core.models import Finding, ImageInspection, MetadataStatus
 from utils.validators import ImageValidationError, MAX_UPLOAD_BYTES, SUPPORTED_EXTENSIONS
@@ -29,6 +30,12 @@ def _render_findings(findings: tuple[Finding, ...]) -> None:
 def _clear_gps_state() -> None:
     st.session_state.pop("pixeltruth_gps_result", None)
     st.session_state.pop("pixeltruth_gps_source_hash", None)
+
+
+def _clear_ela_state() -> None:
+    st.session_state.pop("pixeltruth_ela_result", None)
+    st.session_state.pop("pixeltruth_ela_source_hash", None)
+    st.session_state.pop("pixeltruth_ela_parameters", None)
 
 
 def _render_properties(inspection: ImageInspection) -> None:
@@ -187,6 +194,66 @@ def _render_comparison() -> None:
         st.info("No differences were found among the metadata fields inspected by this phase.")
 
 
+def _render_ela(inspection: ImageInspection | None, file_bytes: bytes | None) -> None:
+    st.write("Error Level Analysis compares decoded JPEG pixels with one recompressed copy.")
+    if inspection is None or file_bytes is None:
+        st.info("Select a valid image before running ELA.")
+        return
+
+    digest = inspection.sha256
+    if st.session_state.get("pixeltruth_ela_source_hash") not in {None, digest}:
+        _clear_ela_state()
+    if inspection.properties.image_format != "JPEG":
+        _clear_ela_state()
+        st.info(f"ELA applies to JPEG images only. This file is {inspection.properties.image_format}; ELA was not run.")
+        return
+
+    quality = st.slider("JPEG recompression quality", min_value=50, max_value=100, value=90, step=5, key="ela_quality")
+    error_scale = st.slider("Error scale", min_value=1, max_value=20, value=10, step=1, key="ela_error_scale")
+    parameters = (quality, error_scale)
+    if st.session_state.get("pixeltruth_ela_parameters") not in {None, parameters}:
+        _clear_ela_state()
+
+    st.caption(f"Quality: {quality} · Error scale: ×{error_scale} · Maximum processed size: 20 megapixels")
+    if st.button("Run ELA", type="secondary", key="run_ela"):
+        _clear_ela_state()
+        try:
+            result = calculate_ela(file_bytes, quality=quality, error_scale=error_scale)
+        except (ELAError, ImageValidationError) as exc:
+            st.error(str(exc))
+        else:
+            st.session_state["pixeltruth_ela_result"] = result
+            st.session_state["pixeltruth_ela_source_hash"] = digest
+            st.session_state["pixeltruth_ela_parameters"] = parameters
+            st.rerun()
+
+    result: ELAResult | None = st.session_state.get("pixeltruth_ela_result")
+    if result is None:
+        st.info("ELA has not been run for this image and these settings.")
+        return
+
+    st.markdown("#### Original and recompression residual")
+    original_column, residual_column = st.columns(2)
+    with original_column:
+        try:
+            with Image.open(BytesIO(file_bytes)) as source_image:
+                oriented_preview = apply_exif_orientation(source_image.copy())
+                st.image(oriented_preview, caption="Original JPEG (EXIF orientation applied)", width="stretch")
+        except (OSError, ValueError):
+            st.warning("The original preview could not be rendered. The ELA result remains available.")
+    with residual_column:
+        st.image(result.residual_png, caption="Amplified ELA residual", width="stretch")
+    metric_columns = st.columns(3)
+    metric_columns[0].metric("Mean RGB difference (0–255)", f"{result.mean_absolute_difference:.3f}")
+    metric_columns[1].metric("Pixels with residual", f"{result.changed_pixel_percent:.1f}%")
+    metric_columns[2].metric("Maximum channel difference", str(result.maximum_channel_difference))
+    st.caption(result.method)
+    st.markdown("#### How it works")
+    st.write("The decoded RGB image is saved once as JPEG at the selected quality. The absolute pixel difference is amplified by the selected scale for viewing.")
+    st.markdown("#### Analytical limitations")
+    st.write(result.limitations)
+
+
 st.set_page_config(
     page_title="PIXELTRUTH — Image Inspection",
     page_icon=None,
@@ -224,13 +291,15 @@ if uploaded is not None:
         st.session_state["pixeltruth_last_inspection"] = inspection
     except ImageValidationError as exc:
         _clear_gps_state()
+        _clear_ela_state()
         st.session_state.pop("pixeltruth_last_inspection", None)
         st.error(str(exc))
 else:
     _clear_gps_state()
+    _clear_ela_state()
 
-analysis_tab, metadata_tab, gps_tab, comparison_tab = st.tabs(
-    ["Image Analysis", "Metadata & Findings", "GPS Intelligence", "Image Comparison"]
+analysis_tab, metadata_tab, gps_tab, comparison_tab, ela_tab = st.tabs(
+    ["Image Analysis", "Metadata & Findings", "GPS Intelligence", "Image Comparison", "Error Level Analysis"]
 )
 with analysis_tab:
     if inspection is None or file_bytes is None:
@@ -266,3 +335,6 @@ with gps_tab:
 
 with comparison_tab:
     _render_comparison()
+
+with ela_tab:
+    _render_ela(inspection, file_bytes)

@@ -9,7 +9,7 @@ Use NOT STARTED, IN PROGRESS, BLOCKED, or COMPLETE. A phase is COMPLETE only whe
 - Phase 0 — COMPLETE (2026-11-25). The user explicitly authorized a greenfield foundation. Python 3.11.0 was confirmed; the existing project-local environment was verified; the requested scaffold, documentation, starter Streamlit entry point, README, license notice, and gitignore were created; and local main/develop branches were prepared without a remote. No forensic features were implemented. See memory.in for environment details.
 - Phase 1 — COMPLETE (2026-11-25). Implemented content-based upload validation, bounded decoding, image properties, common EXIF fields/statuses, SHA-256, and a working single-image Streamlit inspection view. Rechecks fixed valid EXIF orientation labels being marked invalid and stopped reporting palette images as reliably 8-bit per channel. At Phase 1 completion, XMP/IPTC parsing was unsupported; the later Phase 2 metadata-support extension added the formats and storage locations listed below. GPS, integrity findings, comparison, ELA, histograms, assessment, and PDF reports were still to come at that milestone.
 - Phase 2 — COMPLETE (2026-11-25). Added structured metadata availability/validity findings, timestamp and EXIF dimension consistency checks, on-demand GPS reveal/clear behavior, two-image property/hash/metadata comparison with a bounded sampled RGB difference indicator, and XMP/IPTC extraction. XMP locations: JPEG APP1, PNG `XML:com.adobe.xmp` text chunks, WebP `XMP ` RIFF chunks, TIFF tag 700. IPTC locations: JPEG Photoshop APP13 `8BIM` resource 0x0404, TIFF tag 33723. JPEG Extended XMP is detected but not reassembled; a standard packet is retained with a limitation note when present. Rechecked with 65 passing tests, including six focused AppTest cases and one complete AppTest flow; pip check, diff check, and local app health/page checks pass. The earlier AppTest timeout did not reproduce and its cause is unknown. AppTest renders all four tabs but does not expose tab selection; actual tab switching is not covered. No assessment verdict or authenticity score was added; those remain Phase 3.
-- Phase 3 — NOT STARTED.
+- Phase 3 — IN PROGRESS. Phase 3.1 (JPEG-only ELA) is COMPLETE; Phase 3.2 (RGB histograms) and Phase 3.3 (assessment and findings integration) are NOT STARTED.
 - Phase 4 — NOT STARTED.
 - Phase 5 — NOT STARTED.
 
@@ -54,6 +54,19 @@ Tasks: documented JPEG-only ELA; RGB histograms; deterministic assessment engine
 
 Exit criteria: unsupported formats do not receive ELA; analyses expose method and limitations; assessment is one of the three allowed labels with documented rules; no fake scores or authenticity claims; tests cover applicability and rules.
 
+### Phase 3.1 — JPEG-only Error Level Analysis
+
+Authorization: The user explicitly requested “implement Phase 3.1” on 2026-11-25 after reviewing the project documentation and architecture.
+
+Scope: JPEG-only one-pass recompression residual, adjustable quality and display scale, a bounded core result, Streamlit side-by-side view, and tests. This subphase does not include histograms, assessments, or assessment-driven findings.
+
+Exit criteria: content-detected JPEG only; non-JPEG and invalid inputs are handled safely; resource limits are enforced before full decode; method and limitations are shown; results remain in session state and are cleared when the input or parameters change; tests pass.
+
+### Later Phase 3 subphases
+
+- Phase 3.2 — RGB histograms with labeled monochrome channel views.
+- Phase 3.3 — Deterministic three-state assessment and findings integration.
+
 ## Phase 4 — Reporting
 
 Authorization command: START PHASE 4
@@ -86,6 +99,14 @@ Exit criteria: end-to-end supported workflows function; relevant test suite pass
 - Tests and results: 44 passed; pip check found no broken requirements; diff check passed; localhost health and page endpoints returned 200. AppTest timed out on a later repeat.
 - Documentation updated: README.md, architecture.in, phases.in, memory.in.
 - Remaining issues: XMP/IPTC storage locations outside those listed in the current-status summary are unsupported; sampled pixel indicator is descriptive only; assessment, ELA, histograms, and reports remain.
+- User report delivered: Yes.
+
+- Phase: 3.1 — JPEG-only Error Level Analysis
+- Date: 2026-11-25
+- Summary: Added opt-in JPEG recompression residual analysis with adjustable quality and display scale, a 20-megapixel processing bound, results/limitations display, and upload/parameter session-state handling.
+- Latest tests and results: 16 focused ELA tests, 8 AppTest interaction tests, and 82 tests in the full suite passed; pip check found no broken requirements; git diff check passed; Streamlit health and page endpoints returned 200. No packages were added.
+- Documentation updated: README.md, architecture.in, phases.in, memory.in.
+- Remaining issues: Actual browser tab selection is not covered by Streamlit AppTest; histograms and assessment remain in later Phase 3 subphases.
 - User report delivered: Yes.
 
 Append one entry after each completed phase:

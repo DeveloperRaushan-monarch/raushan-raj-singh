@@ -31,6 +31,12 @@ def make_gps_jpeg() -> bytes:
     return output.getvalue()
 
 
+def make_jpeg(color: str) -> bytes:
+    output = BytesIO()
+    Image.new("RGB", (12, 8), color).save(output, format="JPEG", quality=95)
+    return output.getvalue()
+
+
 def start_app() -> AppTest:
     app = AppTest.from_file(APP_PATH, default_timeout=APPTEST_TIMEOUT_SECONDS)
     app.run(timeout=APPTEST_TIMEOUT_SECONDS)
@@ -52,12 +58,14 @@ def test_home_page_renders_without_exceptions():
         "Metadata & Findings",
         "GPS Intelligence",
         "Image Comparison",
+        "Error Level Analysis",
     ]
     assert len(app.file_uploader) == 3
     assert any("Select an image above" in item.value for item in app.tabs[0].info)
     assert any("Select a valid image to inspect metadata" in item.value for item in app.tabs[1].info)
     assert any("Select a valid image before requesting GPS" in item.value for item in app.tabs[2].info)
     assert len(app.tabs[3].file_uploader) == 2
+    assert any("Select a valid image before running ELA" in item.value for item in app.tabs[4].info)
 
 
 def test_valid_image_upload_renders_inspection_and_metadata_sections():
@@ -131,6 +139,57 @@ def test_comparison_controls_work_with_two_images():
     assert not app.error
 
 
+def test_ela_is_explicit_and_jpeg_only():
+    app = start_app()
+    app.file_uploader[0].set_value(("sample.png", make_png("white"), "image/png"))
+    run_app(app)
+    assert any("ELA applies to JPEG images only" in item.value for item in app.tabs[4].info)
+    assert not any(button.label == "Run ELA" for button in app.button)
+
+    app.file_uploader[0].set_value(("sample.jpg", make_jpeg("white"), "image/jpeg"))
+    run_app(app)
+    assert any(slider.label == "JPEG recompression quality" for slider in app.slider)
+    assert any(slider.label == "Error scale" for slider in app.slider)
+    assert any(button.label == "Run ELA" for button in app.button)
+    assert "pixeltruth_ela_result" not in app.session_state
+
+    next(button for button in app.button if button.label == "Run ELA").click()
+    run_app(app)
+    assert "pixeltruth_ela_result" in app.session_state
+    next(slider for slider in app.slider if slider.label == "JPEG recompression quality").set_value(85)
+    run_app(app)
+    assert "pixeltruth_ela_result" not in app.session_state
+    assert not any(metric.label == "Mean RGB difference (0–255)" for metric in app.metric)
+
+    next(button for button in app.button if button.label == "Run ELA").click()
+    run_app(app)
+    assert "pixeltruth_ela_result" in app.session_state
+    next(slider for slider in app.slider if slider.label == "Error scale").set_value(5)
+    run_app(app)
+    assert "pixeltruth_ela_result" not in app.session_state
+
+    next(button for button in app.button if button.label == "Run ELA").click()
+    run_app(app)
+    assert "pixeltruth_ela_result" in app.session_state
+    app.file_uploader[0].set_value(("different.jpg", make_jpeg("black"), "image/jpeg"))
+    run_app(app)
+    assert "pixeltruth_ela_result" not in app.session_state
+    assert not any(metric.label == "Mean RGB difference (0–255)" for metric in app.metric)
+
+    next(button for button in app.button if button.label == "Run ELA").click()
+    run_app(app)
+    assert "pixeltruth_ela_result" in app.session_state
+    app.file_uploader[0].clear()
+    run_app(app)
+    assert "pixeltruth_ela_result" not in app.session_state
+    assert "pixeltruth_ela_source_hash" not in app.session_state
+
+    app.file_uploader[0].set_value(("sample.png", make_png("white"), "image/png"))
+    run_app(app)
+    assert "pixeltruth_ela_result" not in app.session_state
+    assert any("ELA applies to JPEG images only" in item.value for item in app.tabs[4].info)
+
+
 def test_complete_supported_app_interaction_flow():
     app = start_app()
 
@@ -157,3 +216,8 @@ def test_complete_supported_app_interaction_flow():
     run_app(app)
     assert any(metric.label == "Sampled pixel similarity indicator" for metric in app.metric)
     assert len(app.image) == 3  # Uploaded inspection preview plus two comparison images.
+
+    app.tabs[4].button[0].click()
+    run_app(app)
+    assert "pixeltruth_ela_result" in app.session_state
+    assert any(metric.label == "Mean RGB difference (0–255)" for metric in app.metric)
