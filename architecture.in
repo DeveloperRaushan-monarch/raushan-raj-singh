@@ -54,6 +54,9 @@ tests/
     test_metadata.py
     test_hashing.py
     test_analysis.py
+    test_metadata_integrity.py
+    test_gps.py
+    test_comparison.py
     test_integrity.py
     test_assessment.py
     test_comparison.py

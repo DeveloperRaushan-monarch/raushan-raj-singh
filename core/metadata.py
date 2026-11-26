@@ -17,7 +17,19 @@ FIELD_SPECS: tuple[tuple[str, str, tuple[str, ...], str], ...] = (
     (
         "datetime_original",
         "Capture date and time",
-        ("EXIF DateTimeOriginal", "DateTimeOriginal", "Image DateTime", "DateTime"),
+        ("EXIF DateTimeOriginal", "DateTimeOriginal"),
+        "datetime",
+    ),
+    (
+        "datetime_digitized",
+        "Date digitized",
+        ("EXIF DateTimeDigitized", "DateTimeDigitized"),
+        "datetime",
+    ),
+    (
+        "datetime_modified",
+        "Image date/time",
+        ("Image DateTime", "DateTime"),
         "datetime",
     ),
     ("software", "Editing software", ("Image Software", "Software"), "text"),
@@ -31,6 +43,18 @@ FIELD_SPECS: tuple[tuple[str, str, tuple[str, ...], str], ...] = (
     ),
     ("focal_length", "Focal length", ("EXIF FocalLength", "FocalLength"), "positive"),
     ("orientation", "Orientation", ("Image Orientation", "Orientation"), "orientation"),
+    (
+        "pixel_x_dimension",
+        "EXIF pixel width",
+        ("EXIF ExifImageWidth", "EXIF PixelXDimension", "ExifImageWidth", "PixelXDimension"),
+        "positive_integer",
+    ),
+    (
+        "pixel_y_dimension",
+        "EXIF pixel height",
+        ("EXIF ExifImageLength", "EXIF PixelYDimension", "ExifImageLength", "PixelYDimension"),
+        "positive_integer",
+    ),
     ("flash", "Flash", ("EXIF Flash", "Flash"), "text"),
     ("color_space", "Color space", ("EXIF ColorSpace", "ColorSpace"), "text"),
 )
@@ -103,19 +127,20 @@ def _is_valid(value: str, kind: str) -> bool:
     return True
 
 
-def _read_exif_tags(file_bytes: bytes) -> tuple[dict[str, str], bool]:
+def _read_exif_tags(file_bytes: bytes, image_format: str) -> tuple[dict[str, str], bool]:
     values: dict[str, str] = {}
     exifread_succeeded = False
     pillow_succeeded = False
-    try:
-        tags = exifread.process_file(BytesIO(file_bytes), details=False, strict=False)
-        exifread_succeeded = True
-        for key, value in tags.items():
-            cleaned = _clean_value(value)
-            if cleaned is not None:
-                values[str(key)] = cleaned
-    except (OSError, EOFError, ValueError, TypeError, IndexError, struct.error):
-        pass
+    if image_format.upper() in {"JPEG", "TIFF"}:
+        try:
+            tags = exifread.process_file(BytesIO(file_bytes), details=False, strict=False)
+            exifread_succeeded = True
+            for key, value in tags.items():
+                cleaned = _clean_value(value)
+                if cleaned is not None:
+                    values[str(key)] = cleaned
+        except (OSError, EOFError, ValueError, TypeError, IndexError, struct.error):
+            pass
 
     # Pillow supplies EXIF for additional containers (including PNG/WebP) and
     # acts as a fallback when ExifRead does not recognize a container's EXIF.
@@ -140,7 +165,7 @@ def _read_exif_tags(file_bytes: bytes) -> tuple[dict[str, str], bool]:
 
 def extract_metadata(file_bytes: bytes, image_format: str) -> tuple[MetadataField, ...]:
     """Extract common EXIF fields; mark unsupported/unavailable data honestly."""
-    tags, parser_available = _read_exif_tags(file_bytes)
+    tags, parser_available = _read_exif_tags(file_bytes, image_format)
     fields: list[MetadataField] = []
     is_exif_capable = image_format.upper() in EXIF_CAPABLE_FORMATS
 

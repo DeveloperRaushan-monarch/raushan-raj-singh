@@ -1,5 +1,7 @@
 """Shared immutable result objects used by core inspection modules."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from enum import Enum
 
@@ -45,3 +47,17 @@ class ImageInspection:
     metadata: tuple[MetadataField, ...]
     sha256: str
     warnings: tuple[str, ...] = ()
+    findings: tuple[Finding, ...] = ()
+
+
+@dataclass(frozen=True)
+class Finding:
+    finding_id: str
+    category: str
+    title: str
+    relevance: str
+    observed_evidence: str
+    explanation: str
+    possible_interpretations: str
+    confidence_limitations: str
+    recommended_next_check: str

@@ -1,10 +1,10 @@
 # PIXELTRUTH
 
-PIXELTRUTH is planned as a local-first image metadata inspection and digital forensics studio. It will present measured observations, explain methods and limitations, and avoid claiming that limited checks prove an image authentic or manipulated.
+PIXELTRUTH is a local-first image metadata inspection and digital forensics studio. It presents measured observations, explains methods and limitations, and avoids claiming that limited checks prove an image authentic or manipulated.
 
 ## Project status
 
-Phase 1 is complete. The app accepts one image per session, validates content and decoding, reports image properties and common EXIF fields, and calculates SHA-256. Metadata integrity findings, GPS disclosure, comparison, ELA, histograms, assessment, and PDF reports remain for later authorized phases. XMP/IPTC parsing is explicitly reported as unsupported in this phase.
+Phases 1 and 2 are complete. The app validates uploaded images and their decodability, reports image properties and common EXIF fields with metadata statuses, and calculates SHA-256 from the original file bytes. It presents structured metadata validity and consistency findings; missing metadata by itself is informational and does not indicate manipulation. GPS details stay hidden until explicitly requested and can be cleared from the session. Two images can be compared by properties, hashes, and metadata, with a bounded sampled RGB difference indicator when the images can be compared; that indicator is descriptive and is not an authenticity score. XMP/IPTC parsing is explicitly reported as unsupported. ELA, histograms, assessment, and PDF reports remain for later authorized phases.
 
 Read the project specifications before starting development:
 
@@ -54,17 +54,17 @@ After dependencies are installed and the environment is active:
 streamlit run app.py
 ```
 
-The current app supports the Phase 1 inspection workflow only.
+The current app supports the completed Phase 1 inspection and Phase 2 metadata intelligence workflows.
 
 ## Project structure
 
 ```text
 app.py
 pages/             Streamlit page entry points (to be added in authorized phases)
-core/              Phase 1 image properties, metadata, hashing, models, and orchestration
+core/              Image inspection, metadata integrity, GPS, comparison, and orchestration
 components/         Reusable interface components (not implemented)
 utils/              Shared validation and formatting utilities
-tests/              Phase 1 validation, property, metadata, hash, and orchestration tests
+tests/              Validation, metadata, GPS privacy, comparison, and core tests
 assets/             Local interface assets
 sample_images/      Synthetic, non-sensitive test images only
 ```

@@ -64,6 +64,14 @@ def test_extracts_exif_from_other_supported_exif_containers(image_format):
     assert fields["orientation"].status is MetadataStatus.PRESENT
 
 
+def test_generic_image_datetime_is_not_mislabeled_as_capture_time():
+    exif = Image.Exif()
+    exif[306] = "2024:01:02 10:00:00"
+    fields = {field.key: field for field in extract_metadata(make_jpeg(exif), "JPEG")}
+    assert fields["datetime_original"].status is MetadataStatus.MISSING
+    assert fields["datetime_modified"].status is MetadataStatus.PRESENT
+
+
 def test_non_exif_format_marks_fields_unsupported():
     fields = extract_metadata(b"unused bytes", "BMP")
     make = next(field for field in fields if field.key == "make")
