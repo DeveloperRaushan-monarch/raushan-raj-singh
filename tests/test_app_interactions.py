@@ -60,6 +60,8 @@ def test_home_page_renders_without_exceptions():
         "Image Comparison",
         "Error Level Analysis",
         "RGB Histogram",
+        "Evidence Assessment",
+        "Forensic Reports",
     ]
     assert len(app.file_uploader) == 3
     assert any("Select an image above" in item.value for item in app.tabs[0].info)

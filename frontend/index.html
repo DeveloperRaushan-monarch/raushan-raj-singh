@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PIXELTRUTH — Monochrome Forensic Workspace</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Mobile / Tablet Top Bar -->
+    <header class="mobile-topbar">
+      <div class="brand-lockup">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+          <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+          <path d="M9 3v18M3 9h18"></path>
+          <rect x="12" y="12" width="5" height="5" fill="currentColor"></rect>
+        </svg>
+        <span>PIXELTRUTH</span>
+      </div>
+      <button id="mobile-nav-toggle" type="button" class="btn btn-secondary" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="app-sidebar">
+        Menu
+      </button>
+    </header>
+
+    <!-- Persistent Dark Sidebar -->
+    <aside id="app-sidebar" class="sidebar" aria-label="Primary Navigation">
+      <div>
+        <div class="sidebar-brand">
+          <div class="brand-lockup">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+              <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+              <path d="M9 3v18M3 9h18"></path>
+              <rect x="12" y="12" width="5" height="5" fill="currentColor"></rect>
+            </svg>
+            <span>PIXELTRUTH</span>
+          </div>
+          <span class="mono muted" style="font-size: 12px;">PT-EA/1.0.0</span>
+        </div>
+
+        <nav class="sidebar-nav" aria-label="Forensic Modules">
+          <button type="button" class="nav-link" data-nav="dashboard" aria-current="page">Dashboard</button>
+          <button type="button" class="nav-link" data-nav="image-analysis">Image Analysis</button>
+          <button type="button" class="nav-link" data-nav="metadata-explorer">Metadata Explorer</button>
+          <button type="button" class="nav-link" data-nav="gps-information">GPS Information</button>
+          <button type="button" class="nav-link" data-nav="image-comparison">Image Comparison</button>
+          <button type="button" class="nav-link" data-nav="error-level-analysis">Error Level Analysis</button>
+          <button type="button" class="nav-link" data-nav="rgb-histogram">RGB Histogram</button>
+          <button type="button" class="nav-link" data-nav="forensic-reports">Forensic Reports</button>
+          <div class="nav-sep" role="separator"></div>
+          <button type="button" class="nav-link" data-nav="about-project">About Project</button>
+        </nav>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="sidebar-footer-title">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+            <rect x="5" y="11" width="14" height="10" rx="2"></rect>
+            <path d="M8 11V7a4 4 0 0 1 8 0v4"></path>
+          </svg>
+          <span>Local Workstation Mode</span>
+        </div>
+        <p class="sidebar-footer-sub">Zero external network uploads.</p>
+      </div>
+    </aside>
+
+    <!-- Main Workspace Area -->
+    <main class="main-area">
+      <div class="workspace-container">
+
+        <!-- SCREEN 1: DASHBOARD -->
+        <section class="screen active" data-screen="dashboard" aria-labelledby="welcome-heading">
+          <header class="workspace-header">
+            <div>
+              <div class="breadcrumb">
+                <span>PIXELTRUTH</span><span aria-hidden="true">/</span><span class="breadcrumb-current">Dashboard</span>
+              </div>
+              <p class="header-sub">Digital image-forensics studio for structural, metadata, and compression inspection.</p>
+            </div>
+            <div class="status-pill" data-status-pill>Status: Awaiting image input</div>
+          </header>
+
+          <div>
+            <h1 id="welcome-heading" class="display-title">Digital Image Intelligence</h1>
+            <p class="body-copy">Inspect image properties, explore embedded metadata, review deterministic evidence assessments, and export monochrome reports — locally and privately.</p>
+          </div>
+
+          <div id="drop-zone" class="drop-zone">
+            <div class="drop-icon" aria-hidden="true">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="12" y1="18" x2="12" y2="12"></line>
+                <polyline points="9 15 12 12 15 15"></polyline>
+              </svg>
+            </div>
+            <div>
+              <p class="title-lg">Drop your image here</p>
+              <p class="small-copy">or browse files from your device</p>
+            </div>
+            <div class="btn-row">
+              <input id="file-input" type="file" accept=".jpg,.jpeg,.png,.tif,.tiff,.webp,.bmp,.gif" class="sr-only">
+              <button id="browse-btn" type="button" class="btn btn-primary">Browse files</button>
+            </div>
+            <div style="border-top: 1px solid var(--border); padding-top: 12px; width: 100%; max-width: 540px;">
+              <p class="small-copy mono">Supported formats: JPEG, PNG, WEBP, TIFF, BMP, GIF · Max size: 50 MB</p>
+              <p class="small-copy">Images are processed locally in memory. They are never uploaded to external servers.</p>
+            </div>
+          </div>
+
+          <div id="upload-error" class="notice-bar error hidden" role="alert"></div>
+
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+              <h2 class="headline-md">Forensic Modules</h2>
+              <span class="small-copy mono">6 Tools Available</span>
+            </div>
+            <div class="grid-3">
+              <article class="card">
+                <div><h3 class="title-lg">Image Analysis</h3><p class="small-copy">Verify format, pixel dimensions, colour mode, aspect ratio, orientation, and SHA-256 fingerprint.</p></div>
+                <div class="card-footer"><span class="small-copy mono">SHA-256 / Core</span><button type="button" class="btn btn-sm" data-nav="image-analysis">Open</button></div>
+              </article>
+              <article class="card">
+                <div><h3 class="title-lg">Metadata Explorer</h3><p class="small-copy">Inspect EXIF, XMP, IPTC, Evidence Assessment (PT-EA/1.0.0), and gated GPS tags.</p></div>
+                <div class="card-footer"><span class="small-copy mono">EXIF / XMP / IPTC</span><button type="button" class="btn btn-sm" data-nav="metadata-explorer">Open</button></div>
+              </article>
+              <article class="card">
+                <div><h3 class="title-lg">Image Comparison</h3><p class="small-copy">Evaluate two files side by side across hash parity, metadata deltas, and pixel similarity.</p></div>
+                <div class="card-footer"><span class="small-copy mono">A/B Diff</span><button type="button" class="btn btn-sm" data-nav="image-comparison">Open</button></div>
+              </article>
+              <article class="card">
+                <div><h3 class="title-lg">Error Level Analysis</h3><p class="small-copy">Examine JPEG compression residuals at calibrated quality levels to highlight structural variance.</p></div>
+                <div class="card-footer"><span class="small-copy mono">ELA / Residuals</span><button type="button" class="btn btn-sm" data-nav="error-level-analysis">Open</button></div>
+              </article>
+              <article class="card">
+                <div><h3 class="title-lg">RGB Histogram</h3><p class="small-copy">Analyse channel intensity distributions using monochrome line styles and separate channel panels.</p></div>
+                <div class="card-footer"><span class="small-copy mono">0–255 Channels</span><button type="button" class="btn btn-sm" data-nav="rgb-histogram">Open</button></div>
+              </article>
+              <article class="card">
+                <div><h3 class="title-lg">Forensic Reports</h3><p class="small-copy">Compile selected findings with privacy controls and GPS exclusion into a monochrome A4 PDF report.</p></div>
+                <div class="card-footer"><span class="small-copy mono">PDF Export</span><button type="button" class="btn btn-sm" data-nav="forensic-reports">Open</button></div>
+              </article>
+            </div>
+          </div>
+
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+              <h2 class="headline-md">Recent Analysis</h2>
+              <span id="recent-count" class="small-copy mono tabular">0 records</span>
+            </div>
+            <div class="table-wrap">
+              <table class="pt-table">
+                <thead>
+                  <tr>
+                    <th>File Name</th>
+                    <th>Format</th>
+                    <th>Dimensions</th>
+                    <th>SHA-256 (Prefix)</th>
+                    <th>Timestamp</th>
+                  </tr>
+                </thead>
+                <tbody id="recent-table-body">
+                  <tr><td colspan="5" style="text-align:center; padding:32px;" class="muted">No analyses recorded in this session. Upload an image above to populate local session records.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- SCREEN 2: IMAGE ANALYSIS -->
+        <section class="screen" data-screen="image-analysis" aria-labelledby="ia-heading">
+          <header class="workspace-header">
+            <div>
+              <div class="breadcrumb"><span>PIXELTRUTH</span><span>/</span><span class="breadcrumb-current">Image Analysis</span></div>
+              <p class="header-sub">Structural file properties, pixel geometry, and cryptographic SHA-256 verification.</p>
+            </div>
+            <div class="status-pill" data-status-pill>Status: Awaiting image input</div>
+          </header>
+
+          <div class="page-title-row">
+            <div>
+              <h1 id="ia-heading" class="headline-lg">Image Analysis</h1>
+              <p class="body-copy">Inspect core container attributes, colour channel depth, and verify bit-level integrity.</p>
+            </div>
+            <div class="btn-row">
+              <button type="button" class="btn btn-secondary" data-nav="dashboard">Load different image</button>
+              <button type="button" class="btn btn-primary" data-nav="metadata-explorer">Open Metadata Explorer</button>
+            </div>
+          </div>
+
+          <div id="ia-empty" class="notice-bar">Upload a supported image on the Dashboard to inspect its properties and SHA-256 fingerprint.</div>
+
+          <div id="ia-content" class="hidden" style="display:flex; flex-direction:column; gap:20px;">
+            <div id="ia-warnings"></div>
+            <div class="grid-12">
+              <div class="card col-5">
+                <div class="card-header">
+                  <span class="title-md">Original Image Preview</span>
+                  <span class="small-copy mono">100% Fit</span>
+                </div>
+                <div class="preview-box">
+                  <img id="ia-preview-img" class="preview-img" alt="Uploaded image preview">
+                </div>
+                <div class="card-footer">
+                  <span id="ia-preview-name" class="mono small-copy"></span>
+                  <span id="ia-preview-dims" class="mono small-copy tabular"></span>
+                </div>
+              </div>
+
+              <div class="col-7 grid-2">
+                <article class="card"><span class="small-copy">Image Format</span><p id="prop-format" class="metric-val">—</p><span id="prop-mime" class="small-copy">—</span></article>
+                <article class="card"><span class="small-copy">Dimensions</span><p id="prop-dims" class="metric-val tabular">—</p><span id="prop-mp" class="small-copy tabular">—</span></article>
+                <article class="card"><span class="small-copy">File Size</span><p id="prop-size" class="metric-val tabular">—</p><span id="prop-bytes" class="small-copy mono tabular">—</span></article>
+                <article class="card"><span class="small-copy">Colour Mode</span><p id="prop-color" class="metric-val">—</p><span id="prop-depth" class="small-copy">—</span></article>
+                <article class="card"><span class="small-copy">Aspect Ratio</span><p id="prop-aspect" class="metric-val tabular">—</p><span id="prop-frames" class="small-copy">—</span></article>
+                <article class="card"><span class="small-copy">Orientation</span><p id="prop-orientation" class="metric-val">—</p><span id="prop-transparency" class="small-copy">—</span></article>
+              </div>
+            </div>
+
+            <article class="card">
+              <div class="card-header">
+                <h2 class="title-lg">SHA-256 Fingerprint</h2>
+                <button id="copy-hash-btn" type="button" class="btn btn-secondary">Copy SHA-256</button>
+              </div>
+              <div id="sha256-value" class="hash-box">—</div>
+              <p class="small-copy">Computed locally from raw original file bytes. Matching hashes mean identical file contents; different hashes do not necessarily indicate different visual content.</p>
+            </article>
+
+            <article id="malware-scan-card" class="card malware-card" aria-labelledby="malware-scan-heading">
+              <div class="card-header">
+                <div>
+                  <h2 id="malware-scan-heading" class="title-lg">Malware &amp; Security Analysis</h2>
+                  <p id="malware-scan-title" class="title-md" style="margin-top:4px;">Scan status unavailable</p>
+                </div>
+                <span id="malware-scan-badge" class="badge">UNAVAILABLE</span>
+              </div>
+              <p id="malware-scan-desc" class="body-copy">Malware scan status is unavailable.</p>
+              <div id="malware-scan-notice" class="notice-bar hidden"></div>
+              <div id="malware-scan-meta" class="malware-meta-grid"></div>
+              <details id="malware-detections-group" class="meta-group hidden" open>
+                <summary>
+                  <span>Detected Signatures</span>
+                  <span id="malware-detections-count" class="small-copy mono tabular">0 detections</span>
+                </summary>
+                <div id="malware-detections-list" class="malware-detections-list"></div>
+              </details>
+              <div id="malware-scan-messages" class="malware-messages"></div>
+              <div id="malware-scan-limitations" class="small-copy"></div>
+            </article>
+          </div>
+        </section>
+
+        <!-- SCREEN 3: METADATA EXPLORER (+ ASSESSMENT + GATED GPS) -->
+        <section class="screen" data-screen="metadata-explorer" aria-labelledby="me-heading">
+          <header class="workspace-header">
+            <div>
+              <div class="breadcrumb"><span>PIXELTRUTH</span><span>/</span><span class="breadcrumb-current">Metadata Explorer</span></div>
+              <p class="header-sub">Structured EXIF, XMP, IPTC inspection, deterministic Evidence Assessment, and gated GPS disclosure.</p>
+            </div>
+            <div class="status-pill" data-status-pill>Status: Awaiting image input</div>
+          </header>
+
+          <div class="page-title-row">
+            <div>
+              <h1 id="me-heading" class="headline-lg">Metadata Explorer</h1>
+              <p class="body-copy">Comprehensive dynamic metadata inventory across EXIF, MakerNotes, XMP, IPTC, ICC, thumbnails, and container properties. Missing tags are never fabricated.</p>
+            </div>
+            <div class="btn-row">
+              <button id="expand-all-btn" type="button" class="btn btn-secondary">Expand non-GPS sections</button>
+              <button id="collapse-all-btn" type="button" class="btn btn-secondary">Collapse all</button>
+              <button id="copy-all-meta-btn" type="button" class="btn btn-secondary">Copy all non-GPS</button>
+              <button id="export-json-btn" type="button" class="btn btn-secondary">Export JSON</button>
+              <button id="export-csv-btn" type="button" class="btn btn-secondary">Export CSV</button>
+            </div>
+          </div>
+
+          <div id="meta-export-status" class="notice-bar hidden" role="status"></div>
+
+          <div id="me-empty" class="notice-bar">Upload a supported image on the Dashboard to explore metadata and assessment results.</div>
+
+          <div id="me-content" class="hidden" style="display:flex; flex-direction:column; gap:16px;">
+            <!-- Evidence Assessment Card (PT-EA/1.0.0 — strictly separate from metadata inventory) -->
+            <article class="card" aria-labelledby="assessment-heading">
+              <div class="card-header">
+                <h2 id="assessment-heading" class="title-lg">Evidence Assessment</h2>
+                <span id="assess-badge" class="badge badge-light">—</span>
+              </div>
+              <p id="assess-explanation" class="body-copy"></p>
+              <div id="assess-findings" style="display:flex; flex-direction:column; gap:10px;"></div>
+              <details class="meta-group">
+                <summary><span>Rule Evaluation Coverage (PT-EA/1.0.0)</span><span id="assess-eval-count" class="small-copy mono"></span></summary>
+                <div class="table-wrap" style="border:none; border-radius:0;">
+                  <table class="pt-table">
+                    <thead><tr><th>Evaluation ID</th><th>Applicability</th><th>Coverage State</th><th>Reason</th></tr></thead>
+                    <tbody id="assess-eval-body"></tbody>
+                  </table>
+                </div>
+              </details>
+              <div id="assess-limitations" class="small-copy"></div>
+            </article>
+
+            <!-- Extraction Coverage & Stage Status -->
+            <article id="meta-coverage-card" class="card" aria-labelledby="coverage-heading">
+              <div class="card-header">
+                <h2 id="coverage-heading" class="title-lg">Extraction Coverage</h2>
+                <span id="meta-coverage-summary" class="small-copy mono tabular">0 records · 0 categories</span>
+              </div>
+              <div id="meta-coverage-warnings" style="display:flex; flex-direction:column; gap:6px;"></div>
+              <details class="meta-group">
+                <summary><span>Parser Stage Details</span><span id="meta-stage-count" class="small-copy mono"></span></summary>
+                <div class="table-wrap" style="border:none; border-radius:0;">
+                  <table class="pt-table">
+                    <thead><tr><th>Stage</th><th>Standard</th><th>Completion</th><th>Records</th><th>Warnings / Notes</th></tr></thead>
+                    <tbody id="meta-stage-body"></tbody>
+                  </table>
+                </div>
+              </details>
+              <p id="meta-coverage-limitations" class="small-copy"></p>
+            </article>
+
+            <!-- Dynamic Search & Filters -->
+            <div id="meta-controls" class="card">
+              <div class="explorer-toolbar">
+                <input id="meta-search" type="search" class="pt-input" placeholder="Search tag names, IDs, namespaces, paths, or values..." aria-label="Search extracted metadata">
+                <select id="meta-filter-source" class="pt-select" aria-label="Filter by source"><option value="">All sources</option></select>
+                <select id="meta-filter-category" class="pt-select" aria-label="Filter by category"><option value="">All categories</option></select>
+                <select id="meta-filter-type" class="pt-select" aria-label="Filter by data type"><option value="">All types</option></select>
+                <select id="meta-filter-status" class="pt-select" aria-label="Filter by extraction status"><option value="">All statuses</option></select>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span id="meta-match-count" class="small-copy mono tabular">Showing 0 records</span>
+                <button id="meta-reset-filters-btn" type="button" class="btn btn-sm">Reset filters</button>
+              </div>
+            </div>
+
+            <div id="meta-empty-filter" class="notice-bar hidden">No extracted metadata records match the active search or filters.</div>
+
+            <!-- Dynamic Metadata Categories -->
+            <div id="metadata-groups" style="display:flex; flex-direction:column; gap:12px;"></div>
+
+            <!-- Gated GPS Information -->
+            <details id="gps-section" class="meta-group">
+              <summary>
+                <span>GPS Information <span id="gps-badge" class="badge" style="margin-left:8px;">Hidden</span></span>
+                <span class="small-copy mono">Reveal</span>
+              </summary>
+              <div style="padding:16px 20px; display:flex; flex-direction:column; gap:12px;">
+                <p class="small-copy">Privacy notice: Embedded geolocation coordinates stay hidden until explicitly requested and are excluded from PDF reports by default.</p>
+                <div class="btn-row">
+                  <button id="reveal-gps-btn" type="button" class="btn btn-secondary">Reveal GPS information</button>
+                  <button id="clear-gps-btn" type="button" class="btn btn-secondary hidden">Clear displayed GPS information</button>
+                </div>
+                <div id="gps-output" class="small-copy">GPS values have not been read for display.</div>
+              </div>
+            </details>
+          </div>
+        </section>
+
+        <!-- SCREEN 4: IMAGE COMPARISON -->
+        <section class="screen" data-screen="image-comparison" aria-labelledby="ic-heading">
+          <header class="workspace-header">
+            <div>
+              <div class="breadcrumb"><span>PIXELTRUTH</span><span>/</span><span class="breadcrumb-current">Image Comparison</span></div>
+              <p class="header-sub">Symmetrical side-by-side evaluation of cryptographic hashes, metadata deltas, and pixel similarity.</p>
+            </div>
+            <div id="cmp-status-pill" class="status-pill">Pair: Select two images</div>
+          </header>
+
+          <div class="page-title-row">
+            <div>
+              <h1 id="ic-heading" class="headline-lg">Image Comparison</h1>
+              <p class="body-copy">Compare two local files to verify exact bit identity, structural recompression, or resized derivatives.</p>
+            </div>
+            <button id="swap-ab-btn" type="button" class="btn btn-secondary">Swap A / B</button>
+          </div>
+
+          <div class="grid-2">
+            <article class="card">
+              <div class="card-header">
+                <span class="title-lg"><span class="badge badge-light">A</span> Image A (Reference)</span>
+                <span id="cmp-a-name" class="small-copy mono">Not selected</span>
+              </div>
+              <input id="cmp-a-input" type="file" accept=".jpg,.jpeg,.png,.tif,.tiff,.webp,.bmp,.gif" class="sr-only">
+              <button id="cmp-a-btn" type="button" class="btn btn-secondary">Choose Image A</button>
+              <div class="preview-box"><img id="cmp-a-img" class="preview-img hidden" alt="Image A preview"><span id="cmp-a-placeholder" class="small-copy">No Image A selected</span></div>
+              <dl class="dl-grid">
+                <div class="dl-item"><dt>Dimensions</dt><dd id="cmp-a-dims">—</dd></div>
+                <div class="dl-item"><dt>File Size</dt><dd id="cmp-a-size">—</dd></div>
+                <div class="dl-item full"><dt>SHA-256</dt><dd id="cmp-a-hash">—</dd></div>
+              </dl>
+            </article>
+
+            <article class="card">
+              <div class="card-header">
+                <span class="title-lg"><span class="badge">B</span> Image B (Suspect)</span>
+                <span id="cmp-b-name" class="small-copy mono">Not selected</span>
+              </div>
+              <input id="cmp-b-input" type="file" accept=".jpg,.jpeg,.png,.tif,.tiff,.webp,.bmp,.gif" class="sr-only">
+              <button id="cmp-b-btn" type="button" class="btn btn-secondary">Choose Image B</button>
+              <div class="preview-box"><img id="cmp-b-img" class="preview-img hidden" alt="Image B preview"><span id="cmp-b-placeholder" class="small-copy">No Image B selected</span></div>
+              <dl class="dl-grid">
+                <div class="dl-item"><dt>Dimensions</dt><dd id="cmp-b-dims">—</dd></div>
+                <div class="dl-item"><dt>File Size</dt><dd id="cmp-b-size">—</dd></div>
+                <div class="dl-item full"><dt>SHA-256</dt><dd id="cmp-b-hash">—</dd></div>
+              </dl>
+            </article>
+          </div>
+
+          <div id="cmp-error" class="notice-bar error hidden" role="alert"></div>
+
+          <div id="cmp-results" class="hidden" style="display:flex; flex-direction:column; gap:16px;">
+            <h2 class="headline-md">Comparison Breakdown</h2>
+            <div class="table-wrap">
+              <table class="pt-table">
+                <thead><tr><th>Metric</th><th>Image A</th><th>Image B</th><th>Status</th></tr></thead>
+                <tbody id="cmp-metrics-body"></tbody>
+              </table>
+            </div>
+            <div id="cmp-similarity" class="notice-bar"></div>
+            <h2 class="headline-md">Metadata Differences</h2>
+            <div class="table-wrap">
+              <table class="pt-table">
+                <thead><tr><th>Field</th><th>Image A</th><th>Image B</th></tr></thead>
+                <tbody id="cmp-meta-body"></tbody>
+              </table>
+            </div>
+            <article class="card">
+              <h3 class="title-lg">Forensic Interpretation</h3>
+              <p class="body-copy">Different file hashes do not necessarily mean the visible images are different. Re-saving a JPEG, stripping EXIF metadata, or resizing dimensions completely alters the SHA-256 digest while preserving high visual similarity. Similarity does not establish common origin or authenticity.</p>
+            </article>
+          </div>
+        </section>
+
+        <!-- SCREEN 5: ERROR LEVEL ANALYSIS -->
+        <section class="screen" data-screen="error-level-analysis" aria-labelledby="ela-heading">
+          <header class="workspace-header">
+            <div>
+              <div class="breadcrumb"><span>PIXELTRUTH</span><span>/</span><span class="breadcrumb-current">Error Level Analysis</span></div>
+              <p class="header-sub">Recompression residual mapping for JPEG block variance inspection.</p>
+            </div>
+            <div class="status-pill" data-status-pill>Status: Awaiting image input</div>
+          </header>
+
+          <div>
+            <h1 id="ela-heading" class="headline-lg">Error Level Analysis</h1>
+            <p class="body-copy">Compare the original JPEG against its amplified recompression residual map (20 MP maximum).</p>
+          </div>
+
+          <div id="ela-empty" class="notice-bar">Select a valid JPEG image on the Dashboard before running ELA.</div>
+
+          <div id="ela-content" class="hidden" style="display:flex; flex-direction:column; gap:16px;">
+            <div id="ela-non-jpeg" class="notice-bar hidden"></div>
+            <div id="ela-controls" class="card">
+              <div class="grid-2">
+                <div class="slider-wrap">
+                  <div class="slider-header"><label for="ela-quality">JPEG Quality</label><span id="ela-quality-val" class="mono tabular">90%</span></div>
+                  <input id="ela-quality" type="range" min="50" max="100" step="5" value="90">
+                </div>
+                <div class="slider-wrap">
+                  <div class="slider-header"><label for="ela-scale">Error Scale</label><span id="ela-scale-val" class="mono tabular">10×</span></div>
+                  <input id="ela-scale" type="range" min="1" max="20" step="1" value="10">
+                </div>
+              </div>
+              <div class="btn-row">
+                <button id="run-ela-btn" type="button" class="btn btn-primary">Recompute ELA</button>
+              </div>
+            </div>
+
+            <div id="ela-results" class="hidden" style="display:flex; flex-direction:column; gap:16px;">
+              <div class="grid-2">
+                <article class="card">
+                  <div class="card-header"><span class="title-md">Original Image</span><span class="badge">UNPROCESSED</span></div>
+                  <div class="preview-box active-border"><img id="ela-orig-img" class="preview-img" alt="Original JPEG"></div>
+                </article>
+                <article class="card">
+                  <div class="card-header"><span class="title-md">ELA Residual Map</span><span id="ela-proc-badge" class="badge badge-light">PROCESSED</span></div>
+                  <div class="preview-box active-border"><img id="ela-res-img" class="preview-img" alt="Amplified ELA residual map"></div>
+                </article>
+              </div>
+              <div class="grid-3">
+                <article class="card"><span class="small-copy">Mean RGB Difference (0–255)</span><p id="ela-mean" class="metric-val tabular">—</p></article>
+                <article class="card"><span class="small-copy">Pixels with Residual</span><p id="ela-pct" class="metric-val tabular">—</p></article>
+                <article class="card"><span class="small-copy">Maximum Channel Difference</span><p id="ela-max" class="metric-val tabular">—</p></article>
+              </div>
+              <div class="grid-2">
+                <article class="card"><h3 class="title-lg">How It Works</h3><p id="ela-method" class="small-copy"></p></article>
+                <article class="card"><h3 class="title-lg">Analytical Limitations</h3><p id="ela-limitations" class="small-copy"></p></article>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- SCREEN 6: RGB HISTOGRAM -->
+        <section class="screen" data-screen="rgb-histogram" aria-labelledby="hist-heading">
+          <header class="workspace-header">
+            <div>
+              <div class="breadcrumb"><span>PIXELTRUTH</span><span>/</span><span class="breadcrumb-current">RGB Histogram</span></div>
+              <p class="header-sub">Monochrome tonal distribution across Red, Green, Blue, and combined channels.</p>
+            </div>
+            <div class="status-pill" data-status-pill>Status: Awaiting image input</div>
+          </header>
+
+          <div class="page-title-row">
+            <div>
+              <h1 id="hist-heading" class="headline-lg">RGB Histogram</h1>
+              <p class="body-copy">Channels are differentiated strictly through monochrome line styles and separate panels — never chromatic fills.</p>
+            </div>
+            <button id="run-hist-btn" type="button" class="btn btn-primary" disabled>Calculate RGB Histogram</button>
+          </div>
+
+          <div id="hist-empty" class="notice-bar">Upload a supported image on the Dashboard before calculating its RGB histogram.</div>
+
+          <div id="hist-results" class="hidden" style="display:flex; flex-direction:column; gap:16px;">
+            <p id="hist-meta" class="small-copy mono tabular"></p>
+            <article class="card">
+              <div class="card-header">
+                <h2 class="title-lg">Combined Intensity Distribution (0–255)</h2>
+                <span class="small-copy mono">Solid: Combined · Dashed: R · Dotted: G · Dash-Dot: B</span>
+              </div>
+              <div id="hist-combined-svg" style="background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:12px;"></div>
+            </article>
+            <div class="grid-3">
+              <article class="card"><h3 class="title-md">Red Channel (R)</h3><div id="hist-r-svg" style="background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:8px;"></div></article>
+              <article class="card"><h3 class="title-md">Green Channel (G)</h3><div id="hist-g-svg" style="background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:8px;"></div></article>
+              <article class="card"><h3 class="title-md">Blue Channel (B)</h3><div id="hist-b-svg" style="background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:8px;"></div></article>
+            </div>
+            <article class="card"><h3 class="title-lg">Analytical Limitations</h3><p id="hist-limitations" class="small-copy"></p></article>
+          </div>
+        </section>
+
+        <!-- SCREEN 7: FORENSIC REPORTS -->
+        <section class="screen" data-screen="forensic-reports" aria-labelledby="fr-heading">
+          <header class="workspace-header">
+            <div>
+              <div class="breadcrumb"><span>PIXELTRUTH</span><span>/</span><span class="breadcrumb-current">Forensic Reports</span></div>
+              <p class="header-sub">Generate printable, monochrome A4 PDF documentation of local forensic findings.</p>
+            </div>
+            <div class="status-pill" data-status-pill>Status: Awaiting image input</div>
+          </header>
+
+          <div>
+            <h1 id="fr-heading" class="headline-lg">Forensic Reports</h1>
+            <p class="body-copy">Select analysis sections, apply privacy redactions, and export a clean monochrome PDF report.</p>
+          </div>
+
+          <div id="fr-empty" class="notice-bar">Upload a supported image on the Dashboard to configure and generate a PDF report.</div>
+
+          <div id="fr-content" class="hidden grid-12">
+            <div class="col-5" style="display:flex; flex-direction:column; gap:16px;">
+              <article class="card">
+                <h2 class="title-lg">Included Sections</h2>
+                <label class="check-row"><input id="rpt-inc-assess" type="checkbox" checked><span>Evidence Assessment &amp; Provenance</span></label>
+                <label class="check-row"><input id="rpt-inc-props" type="checkbox" checked><span>File Properties &amp; SHA-256 Digest</span></label>
+                <label class="check-row"><input id="rpt-inc-meta" type="checkbox" checked><span>Metadata Observations</span></label>
+                <label class="check-row"><input id="rpt-inc-ela" type="checkbox" disabled><span>Error Level Analysis Summary</span></label>
+                <label class="check-row"><input id="rpt-inc-hist" type="checkbox" disabled><span>RGB Histogram Statistics</span></label>
+                <label class="check-row"><input id="rpt-inc-malware" type="checkbox"><span>Malware &amp; Security Analysis (ClamAV)</span></label>
+              </article>
+
+              <article class="card">
+                <h2 class="title-lg">Privacy Options</h2>
+                <label class="check-row"><input id="rpt-exclude-gps" type="checkbox" checked><span>Exclude GPS coordinates (Recommended)</span></label>
+                <label class="check-row"><input id="rpt-redact-paths" type="checkbox" checked><span>Redact local workstation file paths</span></label>
+                <div id="rpt-gps-notice" class="notice-bar">GPS exclusion active: Location coordinates will be omitted from the exported PDF.</div>
+              </article>
+
+              <button id="rpt-generate-btn" type="button" class="btn btn-primary btn-full">Generate &amp; Download PDF Report</button>
+              <a id="rpt-download-link" class="btn btn-secondary btn-full hidden" download>Save Generated PDF</a>
+              <p id="rpt-meta-caption" class="small-copy mono"></p>
+            </div>
+
+            <div class="col-7">
+              <div class="report-paper">
+                <div class="report-paper-header">
+                  <div>
+                    <div style="font-size:11px; letter-spacing:0.06em; text-transform:uppercase;">PIXELTRUTH FORENSIC REPORT</div>
+                    <h3 style="font-size:20px; margin-top:4px;">Digital Image Inspection</h3>
+                  </div>
+                  <span class="mono" style="font-size:12px;">A4 Monochrome Preview</span>
+                </div>
+
+                <div>
+                  <div class="report-paper-section-title">1. Evidence &amp; Assessment Summary</div>
+                  <table class="report-paper-table">
+                    <tbody>
+                      <tr><td style="width:34%;">Subject Filename</td><td id="pv-filename" class="mono"></td></tr>
+                      <tr><td>Dimensions</td><td id="pv-dims" class="mono tabular"></td></tr>
+                      <tr><td>Assessment Outcome</td><td id="pv-outcome" class="mono" style="font-weight:700;"></td></tr>
+                      <tr><td>SHA-256</td><td id="pv-hash" class="mono" style="word-break:break-all;"></td></tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <div>
+                  <div class="report-paper-section-title">2. Selected Sections &amp; Privacy</div>
+                  <table class="report-paper-table">
+                    <tbody>
+                      <tr><td style="width:34%;">Included Sections</td><td id="pv-sections" class="mono"></td></tr>
+                      <tr><td>GPS Data</td><td id="pv-gps" class="mono"></td></tr>
+                      <tr><td>Path Redaction</td><td id="pv-paths" class="mono"></td></tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <div style="border-top:1px solid var(--outline); padding-top:10px; display:flex; justify-content:space-between; font-size:11px;" class="mono">
+                  <span>Generated locally · PIXELTRUTH</span>
+                  <span>PT-EA/1.0.0</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- SCREEN 8: ABOUT PROJECT -->
+        <section class="screen" data-screen="about-project" aria-labelledby="about-heading">
+          <header class="workspace-header">
+            <div>
+              <div class="breadcrumb"><span>PIXELTRUTH</span><span>/</span><span class="breadcrumb-current">About Project</span></div>
+              <p class="header-sub">Architecture, privacy guarantees, and forensic methodology.</p>
+            </div>
+            <div class="status-pill active-file">100% Local Processing</div>
+          </header>
+
+          <div>
+            <h1 id="about-heading" class="headline-lg">About PIXELTRUTH</h1>
+            <p class="body-copy">PIXELTRUTH is a local-first digital image-forensics workstation designed to inspect structural properties, embedded metadata, and compression indicators without transmitting evidence to external servers.</p>
+          </div>
+
+          <div class="grid-2">
+            <article class="card">
+              <h2 class="title-lg">Local &amp; Private Execution</h2>
+              <p class="small-copy">All hashing, EXIF/XMP/IPTC parsing, ELA residual computation, histogram generation, assessment rules, and PDF generation run locally in memory. Uploaded files remain on your workstation and are never transmitted externally.</p>
+            </article>
+            <article class="card">
+              <h2 class="title-lg">Gated Geolocation Privacy</h2>
+              <p class="small-copy">Embedded GPS tags remain concealed until explicitly revealed in Metadata Explorer, and are excluded by default when generating PDF forensic reports.</p>
+            </article>
+            <article class="card">
+              <h2 class="title-lg">Objective Indicators</h2>
+              <p class="small-copy">PIXELTRUTH reports observable technical evidence — cryptographic digests, metadata statuses, and compression residuals — without making automated claims of authenticity or manipulation.</p>
+            </article>
+            <article class="card">
+              <h2 class="title-lg">Monochrome Studio Standard</h2>
+              <p class="small-copy">A strict black-and-white interface eliminates chromatic bias when inspecting tonal distributions, compression artifacts, and side-by-side visual comparisons.</p>
+            </article>
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>

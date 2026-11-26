@@ -5,11 +5,18 @@ from datetime import datetime
 from core.models import Finding, ImageProperties, MetadataField, MetadataStatus
 
 
-ROTATED_ORIENTATION_LABELS = {
+ORIENTATION_LABEL_CODES = {
+    "horizontal (normal)": 1,
+    "mirror horizontal": 2,
+    "mirrored horizontal": 2,
+    "rotate 180": 3,
+    "rotated 180": 3,
+    "mirror vertical": 4,
+    "mirrored vertical": 4,
     "mirror horizontal and rotate 270 cw": 5,
     "mirrored horizontal then rotated 90 ccw": 5,
-    "rotated 90 cw": 6,
     "rotate 90 cw": 6,
+    "rotated 90 cw": 6,
     "mirror horizontal and rotate 90 cw": 7,
     "mirrored horizontal then rotated 90 cw": 7,
     "rotate 270 cw": 8,
@@ -37,7 +44,7 @@ def _orientation_code(value: str | None) -> int | None:
         number = int(value)
         return number if 1 <= number <= 8 else None
     except ValueError:
-        return ROTATED_ORIENTATION_LABELS.get(value.strip().lower())
+        return ORIENTATION_LABEL_CODES.get(value.strip().lower())
 
 
 def inspect_metadata_consistency(
@@ -65,7 +72,7 @@ def inspect_metadata_consistency(
                     finding_id="timestamp-original-digitized-differ",
                     category="Timestamp consistency",
                     title="Capture and digitized timestamps differ",
-                    relevance="Review",
+                    relevance="Informational",
                     observed_evidence=(
                         f"DateTimeOriginal is {original.value}; DateTimeDigitized is {digitized.value}."
                     ),
@@ -94,11 +101,27 @@ def inspect_metadata_consistency(
         except ValueError:
             metadata_size = None
         actual_size = (properties.width, properties.height)
-        orientation = _orientation_code(by_key.get("orientation").value if by_key.get("orientation") else None)
-        allowed_sizes = {actual_size}
-        if orientation in {5, 6, 7, 8}:
-            allowed_sizes.add((properties.height, properties.width))
-        if metadata_size is not None and metadata_size not in allowed_sizes:
+        swapped_size = (properties.height, properties.width)
+        orientation_field = by_key.get("orientation")
+        orientation = (
+            _orientation_code(orientation_field.value)
+            if orientation_field and orientation_field.status is MetadataStatus.PRESENT
+            else None
+        )
+        should_emit = False
+        if metadata_size is not None:
+            if orientation_field is None or orientation_field.status is MetadataStatus.MISSING:
+                # Direct equality passes; swapped-only is ambiguous (not evaluable); other mismatch emits Review.
+                should_emit = metadata_size not in {actual_size, swapped_size}
+            elif orientation is None:
+                # Invalid/unrecognized orientation: direct equality passes; any non-direct match is not evaluable.
+                should_emit = False
+            else:
+                allowed_sizes = {actual_size}
+                if orientation in {5, 6, 7, 8}:
+                    allowed_sizes.add(swapped_size)
+                should_emit = metadata_size not in allowed_sizes
+        if should_emit and metadata_size is not None:
             findings.append(
                 Finding(
                     finding_id="exif-pixel-dimensions-differ",

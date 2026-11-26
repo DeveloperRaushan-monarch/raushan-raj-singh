@@ -1,0 +1,221 @@
+# PIXELTRUTH Phase 6B — Comprehensive Metadata Data Model & Extraction Design
+
+**Status:** Phase 6B Design Specification (pending user review before Phase 6C implementation).
+
+**Scope:** Dynamic metadata inventory, hierarchical preservation, extraction coverage tracking, GPS separation, and JSON/CSV export schemas. Preserves `core/models.py:MetadataField` and `PT-EA/1.0.0` (`core/assessment_*`) unchanged.
+
+---
+
+## 1. Proposed Data Model (Field Definitions & Types)
+
+All new models live in `core/metadata_models.py` (frozen dataclasses, immutable tuples, JSON-serializable via `.to_dict()`).
+
+### 1.1 `MetadataStatus` (reused from `core/models.py`)
+Existing enum preserved without modification:
+- `PRESENT` (`"Present"`) — Field/tag successfully extracted.
+- `MISSING` (`"Missing"`) — Expected standard/container location absent.
+- `INVALID` (`"Invalid"`) — Stored value or structure is malformed or fails parsing.
+- `UNSUPPORTED` (`"Unsupported"`) — Format, storage location, or proprietary encoding (e.g. encrypted/undecoded MakerNotes) is not supported by the extractor.
+- `UNAVAILABLE` (`"Unavailable"`) — Extraction attempted but could not complete due to parser error or resource limit.
+
+### 1.2 `MetadataRecord`
+Represents one extracted metadata item, container property, or hierarchical node without discarding unknown tags or flattening nested structures.
+
+| Field | Type | Required Meaning |
+| --- | --- | --- |
+| `record_id` | `str` | Deterministic unique ID within an inventory (e.g., `exif:ExifIFD:0x9209:Flash`, `xmp:xmpMM:History[0]/stEvt:action`). |
+| `source` | `str` | Standard/origin: `"EXIF"`, `"EXIF MakerNotes"`, `"XMP"`, `"IPTC"`, `"ICC"`, `"Container"`, `"Thumbnail"`. |
+| `category` | `str` | Dynamic UI category from Section 2 taxonomy. |
+| `tag_name` | `str` | Original tag/property name (e.g., `"LensModel"`, `"dc:subject"`, `"ProfileDescription"`). |
+| `tag_id` | `str \| None` | Numeric/hex tag ID or dataset ID where applicable (e.g., `"0xA434"`, `"2:25"`, `"desc"`). |
+| `namespace` | `str \| None` | XML namespace URI/prefix (XMP), IFD name (EXIF), or IIM record name (IPTC). |
+| `path` | `tuple[str, ...]` | Hierarchical path segments preserving nesting & array indices (e.g., `("xmpMM:History", "[0]", "stEvt:when")`). |
+| `raw_value` | `str \| int \| float \| bool \| list \| dict \| None` | Bounded, JSON-safe representation of the raw stored value (hex/base64 summary for binary blobs > 256 bytes). |
+| `interpreted_value` | `str` | Human-readable interpreted value (or `"Not decoded — raw bytes preserved"` for undecoded MakerNotes/binary). |
+| `data_type` | `str` | Original/inferred type: `"string"`, `"integer"`, `"rational"`, `"float"`, `"array"`, `"struct"`, `"bytes"`, `"datetime"`, `"unknown"`. |
+| `status` | `MetadataStatus` | Extraction/interpretation status (`Present`, `Invalid`, `Unsupported`, `Unavailable`). |
+| `is_unknown` | `bool` | `True` when tag ID/name is unrecognized by standard tag tables or unmapped. |
+| `is_hierarchical` | `bool` | `True` when `raw_value` is a structured object/array or child node in a nested structure. |
+| `attributes` | `dict[str, str]` | Preserved XML attributes (e.g., `xml:lang="x-default"`, `rdf:parseType="Resource"`). |
+| `limitations` | `str \| None` | Explicit interpretation or truncation note (mandatory for partially decoded/undecoded MakerNotes or truncated binary). |
+
+### 1.3 `MetadataExtractionWarning`
+| Field | Type | Required Meaning |
+| --- | --- | --- |
+| `stage_id` | `str` | Stage identifier (`"exif"`, `"makernotes"`, `"xmp"`, `"iptc"`, `"icc"`, `"container"`, `"thumbnail"`). |
+| `code` | `str` | Machine-readable warning code (e.g., `"MAKERNOTES_UNDECODED"`, `"XMP_EXTENDED_DETECTED"`, `"TRUNCATED_BLOB"`). |
+| `message` | `str` | Plain-language explanation of the warning or limitation. |
+
+### 1.4 `MetadataExtractionStage`
+| Field | Type | Required Meaning |
+| --- | --- | --- |
+| `stage_id` | `str` | Stage identifier (`"container"`, `"exif"`, `"makernotes"`, `"xmp"`, `"iptc"`, `"icc"`, `"thumbnail"`). |
+| `source_standard` | `str` | Standard or container name (`"Container"`, `"EXIF"`, `"EXIF MakerNotes"`, `"XMP"`, `"IPTC"`, `"ICC"`, `"Thumbnail"`). |
+| `completion_state` | `str` | Exact state: `"COMPLETED"`, `"PARTIAL"`, `"EMPTY"`, `"UNSUPPORTED"`, `"FAILED"`, `"SKIPPED_RESOURCE_LIMIT"`. |
+| `records_extracted` | `int` | Count of `MetadataRecord` items produced by this stage. |
+| `warnings` | `tuple[MetadataExtractionWarning, ...]` | Stage-specific parser warnings. |
+| `unsupported_features` | `tuple[str, ...]` | Explicitly unsupported sub-features (e.g., `"Manufacturer-specific MakerNotes decoding"`). |
+| `limitations` | `tuple[str, ...]` | Honest scope limits (e.g., `"Parser completion does not guarantee all embedded metadata was recoverable."`). |
+
+### 1.5 `MetadataExtractionCoverage`
+| Field | Type | Required Meaning |
+| --- | --- | --- |
+| `total_records` | `int` | Total `MetadataRecord` count across all stages (excluding GPS). |
+| `categories_found` | `tuple[str, ...]` | Distinct non-empty categories present in `records`. |
+| `unsupported_sources` | `tuple[str, ...]` | Standards marked `UNSUPPORTED` for the detected format. |
+| `stages` | `tuple[MetadataExtractionStage, ...]` | Per-stage completion, counts, warnings, and limitations. |
+| `warnings` | `tuple[MetadataExtractionWarning, ...]` | Aggregated extraction warnings. |
+| `limitations` | `tuple[str, ...]` | Global extraction boundary statements. |
+
+### 1.6 `MetadataInventory`
+| Field | Type | Required Meaning |
+| --- | --- | --- |
+| `records` | `tuple[MetadataRecord, ...]` | Deterministically ordered non-GPS metadata records. |
+| `coverage` | `MetadataExtractionCoverage` | Measurable stage-by-stage extraction coverage and limitations. |
+| `gps_present_indicator` | `bool` | **Boolean only** (`True` if GPS IFD/tags were detected, without storing or returning any coordinates). |
+
+**Compatibility guarantee:** `core/models.py:ImageInspection` retains `metadata: tuple[MetadataField, ...]` for `PT-EA/1.0.0` (`assess_inspection`). `MetadataInventory` is produced alongside it by `extract_metadata_inventory(file_bytes, image_format, properties)` without altering `MetadataField` or `PT-EA/1.0.0` rules.
+
+---
+
+## 2. Metadata Source & Category Taxonomy
+
+Categories are generated dynamically from extracted `MetadataRecord.category` values (empty categories are omitted; `Unknown / Unclassified Metadata` is shown whenever `is_unknown=True` records exist):
+
+1. `File Information` (`Container`: file signature/magic bytes, detected format, MIME type, file size, extension mismatch)
+2. `Camera Information` (`EXIF`: `Make`, `Model`, `BodySerialNumber`, `CameraOwnerName`, etc.)
+3. `Lens Information` (`EXIF`: `LensMake`, `LensModel`, `LensSpecification`, `LensSerialNumber`, `FocalLengthIn35mmFilm`, `MaxApertureValue`)
+4. `Capture Information` (`EXIF`: `DateTimeOriginal`, `DateTimeDigitized`, `DateTime`, `OffsetTime*`, `SubSecTime*`)
+5. `Exposure Information` (`EXIF`: `ExposureTime`, `FNumber`, `ISOSpeedRatings`, `PhotographicSensitivity`, `FocalLength`, `Flash`, `WhiteBalance`, `MeteringMode`, `ExposureProgram`, `ExposureBiasValue`, `ShutterSpeedValue`, `ApertureValue`, `LightSource`, `SceneCaptureType`)
+6. `Image Information` (`EXIF` + `Container`: `PixelXDimension`, `PixelYDimension`, `ExifImageWidth/Length`, `Orientation`, `ColorSpace`, `XResolution`, `YResolution`, `ResolutionUnit`, `Compression`, `BitsPerSample`, `SamplesPerPixel`, `PhotometricInterpretation`, animation/frame dimensions)
+7. `Software Information` (`EXIF` / `XMP` / `Container`: `Software`, `ProcessingSoftware`, `xmp:CreatorTool`, `HistorySoftwareAgent`, PNG `Software` text chunk)
+8. `EXIF Metadata` (`EXIF`: `ExifVersion`, `FlashpixVersion`, `Artist`, `Copyright`, `UserComment`, `ImageDescription`, `ComponentsConfiguration`, and remaining recognized EXIF/TIFF IFD tags)
+9. `EXIF MakerNotes` (`EXIF MakerNotes`: decoded or raw/partially interpreted manufacturer-specific tags)
+10. `XMP Metadata` (`XMP`: all parsed XMP properties, nested structs, arrays, namespaces, and attributes)
+11. `IPTC Metadata` (`IPTC`: all parsed IPTC-IIM datasets including Caption, Headline, Creator/Byline, Copyright, Keywords, Category, Date Created, City, Sublocation, Country, Source, Instructions, Contact)
+12. `ICC Colour Profile` (`ICC`: profile presence, size, preferred CMM, version, device class, colour space, PCS, profile description, copyright, white point/rendering intent)
+13. `Thumbnail Information` (`Thumbnail`: embedded EXIF thumbnail presence, format, byte length, dimensions, compression)
+14. `Unknown / Unclassified Metadata` (any EXIF tag with unmapped/unknown numeric ID, unknown XMP property/namespace, or unmapped IPTC dataset)
+15. `GPS Information` (**Privacy-gated — NEVER populated in `MetadataInventory.records`**; served solely by the explicit `/api/gps/reveal` path)
+
+---
+
+## 3. GPS Privacy Architecture
+
+1. **Strict Extraction Separation:**
+   - EXIF extraction for `MetadataInventory` **explicitly filters out** all GPS IFD tags (`GPS *`, tag IDs in IFD `GPSInfo` / `0x8825`) and XMP `exif:GPS*` properties from ordinary `MetadataRecord` output.
+   - `MetadataInventory.gps_present_indicator` only records a boolean (`True`/`False`) indicating whether GPS metadata was detected, never coordinates, altitude, or GPS timestamps.
+2. **Explicit Disclosure Path:**
+   - `core/gps.py:extract_gps(file_bytes, image_format)` remains the sole authority for reading GPS coordinates, invoked **only** upon explicit user action (`POST /api/gps/reveal` or Streamlit button).
+   - `POST /api/gps/clear` clears `gps_result` from the active `SessionState`.
+3. **Export & Report Isolation:**
+   - Ordinary `JSON` and `CSV` metadata exports consume `MetadataInventory.records` and **exclude GPS by default** (`include_gps=False`).
+   - Explicit GPS inclusion in JSON/CSV/PDF requires both `(a)` GPS already revealed in the active session and `(b)` explicit opt-in flag (`include_gps=True`), and is clearly labeled in export metadata.
+
+---
+
+## 4. Extraction Coverage Architecture
+
+- Every extraction stage emits a `MetadataExtractionStage` record regardless of whether 0 or 500 records were found.
+- **Parser completion ≠ complete extraction:** A `COMPLETED` stage indicates the parser ran within bounds without crashing; `PARTIAL` indicates some data could not be decoded (e.g. raw MakerNotes or Extended XMP); `UNSUPPORTED` indicates format/container non-support (e.g. EXIF on BMP/GIF); `FAILED` indicates malformed container/stream errors.
+- Global `MetadataExtractionCoverage.limitations` always includes an explicit honesty statement that proprietary, encrypted, stripped, or unrecognized metadata may not be recoverable.
+
+---
+
+## 5. Per-Standard Extraction Design
+
+1. **EXIF (`core/metadata_inventory.py`):**
+   - Run `exifread.process_file(BytesIO(file_bytes), details=True, strict=False)` to access IFD0, ExifIFD, Interoperability, Thumbnail, and MakerNotes, merged with `PIL.Image.getexif()` (IFD0 + `ExifTags.IFD.Exif` + `ExifTags.IFD.Interop`).
+   - **GPS IFD (`GPSInfo` / `0x8825`)** is skipped during inventory building (sets `gps_present_indicator=True` if non-empty).
+   - Extract numeric `tag_id` (formatted `0xXXXX`), IFD `namespace`, `raw_value` (bounded), `interpreted_value` (printable), `data_type`, and `is_unknown` (True if `ExifRead` emits `Tag 0x...` or Pillow `ExifTags.TAGS` has no mapping).
+2. **MakerNotes:**
+   - When `ExifRead` (`details=True`) decodes `MakerNote *` tags, emit them under `EXIF MakerNotes` with `status=PRESENT` (or `PARTIAL`/limitation note when values are raw byte arrays or numeric codes without enum labels).
+   - When an EXIF `MakerNote` tag (`0x927C`) is present as an opaque byte blob that `ExifRead` cannot decode, preserve a bounded hex/size summary (`raw_value`), set `status=MetadataStatus.UNSUPPORTED`, `is_unknown=True`, `limitations="Manufacturer-specific MakerNotes could not be decoded by ExifRead; bounded raw preview preserved."`, and add a `MAKERNOTES_UNDECODED` warning. **Never invent decoded MakerNotes values.**
+3. **XMP (Hierarchical Preservation):**
+   - Reuse bounded XMP packet extraction from `core/xmp.py` (1 MB cap, DTD/entity rejection, Extended XMP detection).
+   - Walk the XML DOM recursively up to `MAX_XMP_DEPTH = 16` and `MAX_XMP_NODES = 1000`:
+     - Preserve `namespace` URI and prefix, `tag_name` (`prefix:localName`), `path` tuple, `attributes` (e.g. `xml:lang`), and nested `rdf:Bag` / `rdf:Seq` / `rdf:Alt` arrays and `rdf:Description` / `rdf:parseType="Resource"` structs as structured `raw_value` (`list`/`dict`) alongside flattened child/path records or expandable hierarchy.
+     - Preserve unknown namespaces and custom properties (`is_unknown=True` if outside standard DC/XMP/Photoshop/EXIF/TIFF/Aux/XmpMM schemas).
+     - Filter out `exif:GPS*` properties from ordinary inventory.
+4. **IPTC:**
+   - Reuse bounded IPTC-IIM extraction from `core/iptc.py` (`8BIM` `0x0404` and TIFF tag `33723`).
+   - Iterate **all** parsed `(record, dataset)` pairs (not just the 9 `IPTC_FIELD_SPECS`). Map known IIM `(record, dataset)` names (e.g., `2:15` Category, `2:40` Special Instructions, `2:115` Source, `2:118` Contact, etc.) and preserve unmapped `(record, dataset)` pairs with `tag_id=f"{record}:{dataset}"` and `is_unknown=True`.
+5. **ICC Colour Profile:**
+   - Read `image.info.get("icc_profile")` via Pillow.
+   - If absent: record stage `completion_state="EMPTY"` with no fabricated values.
+   - If present (bounded `MAX_ICC_BYTES = 4_000_000`): parse with `PIL.ImageCms.ImageCmsProfile(BytesIO(icc_bytes))` for `profile_description`, `xcolor_space`, `connection_space`, `rendering_intent`, `manufacturer`, `model`, plus ICC 128-byte header fields (`version`, `device_class`, `preferred_cmm`, `creation_datetime`, `size_bytes`) via `struct.unpack`.
+6. **Container / File Signature / Thumbnail:**
+   - Extract magic-byte signature (first 16 bytes hex), container info (`image.info` safe scalar keys such as `compression`, `dpi`, `progressive`, `interlace`, `loop`, `duration`, PNG `tEXt`/`iTXt`/`zTXt` chunks excluding raw `XML:com.adobe.xmp`), and EXIF thumbnail presence/format/dimensions/byte-length from `ExifRead` (`JPEGThumbnail` / `TIFFThumbnail` metadata without embedding raw thumbnail bytes in JSON by default).
+
+---
+
+## 6. Unknown-Tag & Raw-Value Preservation Strategy
+
+- No tag is dropped for having an unrecognized name or numeric ID.
+- Binary blobs (`bytes`) are never dumped raw into JSON/CSV; values > 256 bytes are summarized as `{"byte_length": N, "hex_prefix": "..."}` with `limitations="Binary value truncated to 64-byte hex prefix for safe display."`.
+- Unknown EXIF tags, unknown XMP namespaces/properties, and unmapped IPTC datasets receive `is_unknown=True` and `category="Unknown / Unclassified Metadata"` so investigators can inspect them directly.
+
+---
+
+## 7. Serialization & API Design (`server.py`)
+
+- `POST /api/inspect` preserves all existing keys (`session_id`, `properties`, `sha256`, `warnings`, `metadata`, `legacy_findings`, `assessment`, `recent_records`) and **adds**:
+  - `"inventory"`: `MetadataInventory.to_dict()` (`records`, `coverage`, `gps_present_indicator`).
+- New export endpoint:
+  - `GET /api/metadata/export?format=json|csv&include_gps=false` (requires valid `X-Pixeltruth-Session` header; `include_gps=true` is honored **only** if `state.gps_result` was explicitly revealed in that session).
+
+---
+
+## 8. JSON and CSV Export Schema
+
+### JSON Export (`pixeltruth_metadata_<sha12>.json`)
+```json
+{
+  "export_version": "PT-META/1.0.0",
+  "exported_at_utc": "YYYY-MM-DD HH:MM:SS UTC",
+  "subject": { "filename": "sanitized_basename.jpg", "sha256": "...", "format": "JPEG" },
+  "gps_included": false,
+  "coverage": { "total_records": 42, "categories_found": ["..."], "stages": ["..."], "limitations": ["..."] },
+  "records": [
+    {
+      "record_id": "...", "source": "EXIF", "category": "Lens Information",
+      "tag_name": "LensModel", "tag_id": "0xA434", "namespace": "ExifIFD",
+      "path": ["ExifIFD", "LensModel"], "raw_value": "...", "interpreted_value": "...",
+      "data_type": "string", "status": "Present", "is_unknown": false,
+      "is_hierarchical": false, "attributes": {}, "limitations": null
+    }
+  ]
+}
+```
+### CSV Export (`pixeltruth_metadata_<sha12>.csv`)
+Columns: `record_id,source,category,tag_name,tag_id,namespace,path,raw_value,interpreted_value,data_type,status,is_unknown,limitations`
+- Hierarchical `raw_value` (`dict`/`list`) is serialized as compact JSON in the CSV cell; `path` is joined with `" / "`.
+- Leading formula characters (`=`, `+`, `-`, `@`) in CSV string cells are safely neutralized if needed or clearly quoted via Python `csv.writer` (`QUOTE_MINIMAL`).
+
+---
+
+## 9. Error Handling & Resource Limits
+
+- **Bounded parsing:** `MAX_METADATA_RECORDS = 2000`, `MAX_XMP_BYTES = 1_000_000`, `MAX_XMP_DEPTH = 16`, `MAX_XMP_NODES = 1000`, `MAX_ICC_BYTES = 4_000_000`, `MAX_BINARY_HEX_BYTES = 64`.
+- **Safe failure isolation:** Any exception in one stage (e.g. corrupt ICC profile or malformed MakerNote) marks **only that stage** `FAILED` or `PARTIAL` with a `MetadataExtractionWarning` and never aborts other stages or crashes `inspect_image`.
+- **XSS prevention:** Frontend renders all extracted metadata values, tag names, namespaces, and limitations using `textContent` (never `innerHTML`).
+
+---
+
+## 10. Test Architecture & Fixture Requirements
+
+- Dedicated test module `tests/test_metadata_inventory.py` using programmatic local fixtures with real embedded metadata (no external/private images):
+  - JPEG with rich EXIF (Camera, Lens, Exposure, Artist/Copyright/UserComment), unknown numeric tag (`0x9999`), raw MakerNote blob (`0x927C`), XMP with nested `rdf:Seq`/`rdf:Description` + custom namespace, IPTC with extended datasets (`2:15`, `2:40`, `2:115`, unknown `2:250`), and real ICC profile (`ImageCms.createProfile("sRGB")`).
+  - PNG with `tEXt` chunks + XMP + ICC; WebP with EXIF + XMP + ICC; TIFF with EXIF + IPTC + XMP + ICC; BMP/GIF marking EXIF/XMP/IPTC `UNSUPPORTED` while reporting `File Information` / container properties.
+  - Malformed XMP/IPTC/ICC, Unicode values (`é`, `日本語`), oversized/truncated binary blobs, and >1000-node XMP truncation warning.
+  - GPS privacy: GPS-tagged JPEG has `gps_present_indicator=True` and **zero** coordinates in `MetadataInventory.records` and default JSON/CSV exports.
+  - Full regression of all 183 existing Phase 1–5 tests.
+
+---
+
+## 11. Dependency Assessment
+
+- **Zero new packages required.** All capabilities are covered by existing `requirements.txt` dependencies:
+  - `Pillow 13.0.0` (`ExifTags`, `ImageCms`, `image.info`, `getexif()`)
+  - `ExifRead 3.5.1` (`process_file(..., details=True)`)
+  - Python 3.11 stdlib (`xml.etree.ElementTree`, `struct`, `csv`, `json`, `io.BytesIO`)

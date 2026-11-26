@@ -1,0 +1,418 @@
+<!DOCTYPE html><html lang="en"><head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PIXELTRUTH — Image Analysis</title>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <script id="tailwind-config">/** @type {import('tailwindcss').Config} */
+globalThis.tailwind = globalThis.tailwind || {};
+globalThis.tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        'background': '#000000',
+        'on-background': '#FFFFFF',
+        'primary': '#FFFFFF',
+        'on-primary': '#111111',
+        'secondary': '#B3B3B3',
+        'on-secondary': '#111111',
+        'surface': '#111111',
+        'on-surface': '#FFFFFF',
+        'surface-container-low': '#111111',
+        'surface-container': '#181818',
+        'surface-container-high': '#222222',
+        'surface-light': '#F5F5F5',
+        'on-surface-light': '#111111',
+        'on-surface-variant': '#B3B3B3',
+        'outline': '#777777',
+        'outline-variant': '#303030',
+      },
+      borderRadius: {
+        'sm': '2px',
+        'DEFAULT': '4px',
+        'md': '6px',
+        'lg': '8px',
+        'full': '9999px',
+      },
+      spacing: {
+        'xs': '4px',
+        'sm': '8px',
+        'md': '16px',
+        'lg': '24px',
+        'xl': '32px',
+        '2xl': '48px',
+      },
+      fontFamily: {
+        'display': ['"Inter"', 'sans-serif'],
+        'headline': ['"Inter"', 'sans-serif'],
+        'title': ['"Inter"', 'sans-serif'],
+        'body': ['"Inter"', 'sans-serif'],
+        'label': ['"Inter"', 'sans-serif'],
+        'mono': ['"Source Code Pro"', 'monospace'],
+      },
+      fontSize: {
+        'display-lg': ['36px', { lineHeight: '44px', letterSpacing: '-0.75px', fontWeight: '700' }],
+        'display-lg-mobile': ['28px', { lineHeight: '34px', letterSpacing: '-0.5px', fontWeight: '700' }],
+        'headline-lg': ['28px', { lineHeight: '36px', letterSpacing: '-0.5px', fontWeight: '700' }],
+        'headline-md': ['20px', { lineHeight: '28px', letterSpacing: '-0.25px', fontWeight: '600' }],
+        'title-lg': ['16px', { lineHeight: '24px', letterSpacing: '0px', fontWeight: '600' }],
+        'title-md': ['14px', { lineHeight: '20px', letterSpacing: '0px', fontWeight: '500' }],
+        'body-md': ['14px', { lineHeight: '22px', letterSpacing: '0px', fontWeight: '400' }],
+        'body-sm': ['13px', { lineHeight: '20px', letterSpacing: '0px', fontWeight: '400' }],
+        'label-lg': ['13px', { lineHeight: '18px', letterSpacing: '0.1px', fontWeight: '500' }],
+        'label-sm': ['11px', { lineHeight: '16px', letterSpacing: '0.4px', fontWeight: '500' }],
+        'mono-md': ['13px', { lineHeight: '20px', letterSpacing: '0px', fontWeight: '400' }],
+        'mono-sm': ['12px', { lineHeight: '18px', letterSpacing: '0px', fontWeight: '400' }],
+      },
+      transitionDuration: {
+        'state-change': '100ms',
+        'surface-enter': '180ms',
+      },
+      transitionDelay: {
+        'state-change': '0ms',
+        'surface-enter': '0ms',
+      },
+      transitionTimingFunction: {
+        'state-change': 'ease-out',
+        'surface-enter': 'cubic-bezier(0.2, 0, 0, 1)',
+      },
+    },
+  },
+};
+if (typeof module !== 'undefined') module.exports = globalThis.tailwind.config;
+</script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Source+Code+Pro:wght@400;500&amp;display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=block" rel="stylesheet">
+  <style>.material-symbols-outlined, .material-symbols-rounded, .material-symbols-sharp, .material-icons { display: inline-block; width: 1em; height: 1em; line-height: 1 !important; box-sizing: content-box; overflow: hidden; white-space: nowrap; direction: ltr; vertical-align: middle; }</style>
+</head>
+<body class="bg-background text-on-background font-body antialiased">
+
+  <div class="min-h-[1024px] flex flex-col lg:flex-row bg-background text-on-background" data-stitch-vh="min-h-[1024px]===min-h-screen">
+
+    <!-- Mobile / Tablet Top Bar -->
+    <header class="lg:hidden flex items-center justify-between px-md py-md bg-surface border-b border-outline-variant">
+      <div class="flex items-center gap-sm">
+        <svg class="w-5 h-5 text-on-surface" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+          <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+          <path d="M9 3v18M3 9h18"></path>
+          <rect x="12" y="12" width="5" height="5" fill="currentColor"></rect>
+        </svg>
+        <span class="font-headline text-title-lg text-on-surface tracking-tight" data-design-text-token="title-lg">PIXELTRUTH</span>
+      </div>
+      <button id="mobile-nav-toggle" data-component-id="button-icon" data-component-type="button" data-component-variant="icon" type="button" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="app-sidebar" class="inline-flex items-center justify-center w-9 h-9 rounded bg-surface-container text-on-surface border border-outline-variant hover:bg-surface-container-high focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary transition-colors duration-state-change ease-state-change">
+        <span class="material-symbols-outlined text-[18px]" aria-hidden="true">menu</span>
+      </button>
+    </header>
+
+    <!-- Persistent Dark Sidebar -->
+    <aside id="app-sidebar" class="hidden lg:flex lg:flex-col lg:w-64 lg:shrink-0 min-h-[1024px] bg-surface border-r border-outline-variant justify-between" aria-label="Primary Navigation" data-stitch-vh="min-h-[1024px]===min-h-screen">
+      <div class="flex flex-col">
+        <!-- Brand Wordmark -->
+        <div class="px-lg py-lg border-b border-outline-variant flex items-center justify-between">
+          <div class="flex items-center gap-sm">
+            <svg class="w-5 h-5 text-on-surface shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+              <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+              <path d="M9 3v18M3 9h18"></path>
+              <rect x="12" y="12" width="5" height="5" fill="currentColor"></rect>
+            </svg>
+            <span class="font-headline text-title-lg text-on-surface tracking-tight" data-design-text-token="title-lg">PIXELTRUTH</span>
+          </div>
+          <span class="font-mono text-mono-sm text-on-surface-variant" data-design-text-token="mono-sm">v2.4</span>
+        </div>
+
+        <!-- Navigation Links -->
+        <nav class="p-md flex flex-col gap-xs" aria-label="Forensic Modules">
+          <a href="#dashboard" class="flex items-center gap-sm px-md py-sm rounded text-on-surface-variant font-label text-label-lg hover:bg-surface-container-high hover:text-on-surface transition-colors duration-state-change ease-state-change">
+            <span class="material-symbols-outlined text-[18px]" aria-hidden="true">dashboard</span>
+            <span data-design-text-token="label-lg">Dashboard</span>
+          </a>
+
+          <a href="#image-analysis" aria-current="page" class="flex items-center gap-sm px-md py-sm rounded bg-surface-container-high text-on-surface font-label text-label-lg border border-outline-variant transition-colors duration-state-change ease-state-change">
+            <span class="material-symbols-outlined text-[18px] text-on-surface" aria-hidden="true">image_search</span>
+            <span data-design-text-token="label-lg">Image Analysis</span>
+          </a>
+
+          <a href="#metadata-explorer" class="flex items-center gap-sm px-md py-sm rounded text-on-surface-variant font-label text-label-lg hover:bg-surface-container-high hover:text-on-surface transition-colors duration-state-change ease-state-change">
+            <span class="material-symbols-outlined text-[18px]" aria-hidden="true">data_object</span>
+            <span data-design-text-token="label-lg">Metadata Explorer</span>
+          </a>
+
+          <a href="#gps-information" class="flex items-center gap-sm px-md py-sm rounded text-on-surface-variant font-label text-label-lg hover:bg-surface-container-high hover:text-on-surface transition-colors duration-state-change ease-state-change">
+            <span class="material-symbols-outlined text-[18px]" aria-hidden="true">location_on</span>
+            <span data-design-text-token="label-lg">GPS Information</span>
+          </a>
+
+          <a href="#image-comparison" class="flex items-center gap-sm px-md py-sm rounded text-on-surface-variant font-label text-label-lg hover:bg-surface-container-high hover:text-on-surface transition-colors duration-state-change ease-state-change">
+            <span class="material-symbols-outlined text-[18px]" aria-hidden="true">compare</span>
+            <span data-design-text-token="label-lg">Image Comparison</span>
+          </a>
+
+          <a href="#error-level-analysis" class="flex items-center gap-sm px-md py-sm rounded text-on-surface-variant font-label text-label-lg hover:bg-surface-container-high hover:text-on-surface transition-colors duration-state-change ease-state-change">
+            <span class="material-symbols-outlined text-[18px]" aria-hidden="true">grid_on</span>
+            <span data-design-text-token="label-lg">Error Level Analysis</span>
+          </a>
+
+          <a href="#rgb-histogram" class="flex items-center gap-sm px-md py-sm rounded text-on-surface-variant font-label text-label-lg hover:bg-surface-container-high hover:text-on-surface transition-colors duration-state-change ease-state-change">
+            <span class="material-symbols-outlined text-[18px]" aria-hidden="true">bar_chart</span>
+            <span data-design-text-token="label-lg">RGB Histogram</span>
+          </a>
+
+          <a href="#forensic-reports" class="flex items-center gap-sm px-md py-sm rounded text-on-surface-variant font-label text-label-lg hover:bg-surface-container-high hover:text-on-surface transition-colors duration-state-change ease-state-change">
+            <span class="material-symbols-outlined text-[18px]" aria-hidden="true">description</span>
+            <span data-design-text-token="label-lg">Forensic Reports</span>
+          </a>
+
+          <div class="my-sm border-t border-outline-variant" role="separator"></div>
+
+          <a href="#about-project" class="flex items-center gap-sm px-md py-sm rounded text-on-surface-variant font-label text-label-lg hover:bg-surface-container-high hover:text-on-surface transition-colors duration-state-change ease-state-change">
+            <span class="material-symbols-outlined text-[18px]" aria-hidden="true">info</span>
+            <span data-design-text-token="label-lg">About Project</span>
+          </a>
+        </nav>
+      </div>
+
+      <!-- Sidebar Footer: Local Processing Status -->
+      <div class="p-md border-t border-outline-variant bg-surface">
+        <div class="flex items-center gap-sm">
+          <span class="material-symbols-outlined text-[16px] text-on-surface" aria-hidden="true">lock</span>
+          <span class="font-label text-label-sm text-on-surface" data-design-text-token="label-sm">Local Workstation Mode</span>
+        </div>
+        <p class="font-body text-body-sm text-on-surface-variant mt-xs" data-design-text-token="body-sm">
+          Zero external network uploads.
+        </p>
+      </div>
+    </aside>
+
+    <!-- Main Workspace Area -->
+    <main class="flex-1 min-w-0 bg-background">
+      <div class="max-w-6xl mx-auto px-md sm:px-lg lg:px-xl py-lg lg:py-xl flex flex-col gap-xl">
+
+        <!-- Workspace Header -->
+        <header class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-md pb-lg border-b border-outline-variant">
+          <div class="flex flex-col gap-xs">
+            <div class="flex items-center gap-sm">
+              <span class="font-label text-label-sm text-on-surface-variant uppercase tracking-wider" data-design-text-token="label-sm">PIXELTRUTH</span>
+              <span class="text-on-surface-variant" aria-hidden="true">/</span>
+              <span class="font-label text-label-sm text-on-surface uppercase tracking-wider" data-design-text-token="label-sm">Image Analysis</span>
+            </div>
+            <p class="font-body text-body-sm text-on-surface-variant" data-design-text-token="body-sm">
+              Structural file properties, pixel geometry, and cryptographic SHA-256 verification.
+            </p>
+          </div>
+
+          <!-- Current Analysis Status -->
+          <div class="inline-flex items-center gap-sm px-md py-sm rounded bg-surface border border-outline-variant self-start sm:self-auto">
+            <span class="material-symbols-outlined text-[16px] text-on-surface" aria-hidden="true">check_circle</span>
+            <span class="font-mono text-mono-sm text-on-surface tabular-nums" data-design-text-token="mono-sm">
+              Active: evidence_sample_01.jpg
+            </span>
+          </div>
+        </header>
+
+        <!-- Page Title & Actions -->
+        <section class="flex flex-col sm:flex-row sm:items-end justify-between gap-md">
+          <div class="flex flex-col gap-xs">
+            <h1 data-component-id="typography-display" data-component-type="typography" data-component-variant="display" data-design-text-token="headline-lg" class="font-headline text-headline-lg text-on-background text-balance">
+              Image Analysis
+            </h1>
+            <p class="font-body text-body-md text-on-surface-variant max-w-prose text-pretty" data-design-text-token="body-md">
+              Inspect core container attributes, colour channel depth, and verify bit-level integrity.
+            </p>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-sm">
+            <!-- COMPONENT: button-secondary -->
+            <button data-component-id="button-secondary" data-component-type="button" data-component-variant="secondary" type="button" class="inline-flex items-center justify-center gap-sm px-md py-sm rounded bg-surface-container text-on-surface border border-outline-variant font-label text-label-lg hover:bg-surface-container-high focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary transition-colors duration-state-change ease-state-change">
+              <span data-design-text-token="label-lg">Load different image</span>
+            </button>
+
+            <!-- COMPONENT: button-primary -->
+            <button data-component-id="button-primary" data-component-type="button" data-component-variant="primary" type="button" class="inline-flex items-center justify-center gap-sm px-md py-sm rounded bg-primary text-on-primary font-label text-label-lg hover:bg-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary transition-colors duration-state-change ease-state-change">
+              <span data-design-text-token="label-lg">Open Metadata Explorer</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- Two-Column Workspace: Preview + Core Properties -->
+        <section aria-labelledby="inspection-heading" class="grid grid-cols-1 lg:grid-cols-12 gap-lg items-start">
+          <h2 id="inspection-heading" class="sr-only">Original Image Preview and Properties</h2>
+
+          <!-- Left Column: Original Image Preview -->
+          <div class="lg:col-span-5 bg-surface-container border border-outline-variant rounded-md p-md flex flex-col gap-md">
+            <div class="flex items-center justify-between pb-sm border-b border-outline-variant">
+              <span class="font-title text-title-md text-on-surface" data-design-text-token="title-md">Original Image Preview</span>
+              <span class="font-mono text-mono-sm text-on-surface-variant tabular-nums" data-design-text-token="mono-sm">100% Fit</span>
+            </div>
+
+            <div class="bg-background border border-outline-variant rounded p-xs overflow-hidden">
+              <img src="https://lh3.googleusercontent.com/aida/ALJJyrBjtcAXKMYlhUfU4A15FFCkbsp7KBmhCWkw8KrdJF72eghRqJ9ybNLlQLOPApJJiP_hVWhhG50LfNhIOay_4zbnS1Woge7nnvtmTdkebrp3RST4uPjIQOMdTMbJbIuLQ_AyuLuzTrODIsho80ITbuvn26tP_ppzEvvxdBwjbl7QNsPhc_O0pO51R3YoNTc2xg7Y50_zUlNAjZP7D2zkNhzyTNmvZuUoQ1lozaRnYqjSMwPWp2GKY6pEDihG" alt="Forensic sample photograph of a concrete architectural facade" class="w-full h-72 object-cover rounded-sm">
+            </div>
+
+            <div class="flex items-center justify-between gap-sm pt-xs">
+              <span class="font-mono text-mono-sm text-on-surface truncate" data-design-text-token="mono-sm">evidence_sample_01.jpg</span>
+              <span class="font-mono text-mono-sm text-on-surface-variant shrink-0 tabular-nums" data-design-text-token="mono-sm">4032 × 3024</span>
+            </div>
+          </div>
+
+          <!-- Right Column: Information Cards Grid -->
+          <div class="lg:col-span-7 flex flex-col gap-md">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-md items-stretch">
+
+              <!-- Card 1: Image Format -->
+              <!-- COMPONENT: card-elevated -->
+              <article data-component-id="card-elevated" data-component-type="card" data-component-variant="elevated" class="h-full bg-surface-container border border-outline-variant rounded-md p-lg flex flex-col justify-between gap-sm">
+                <header class="flex items-center justify-between gap-sm">
+                  <h3 class="font-title text-title-md text-on-surface-variant" data-design-text-token="title-md">Image Format</h3>
+                  <span class="material-symbols-outlined text-[18px] text-on-surface-variant" aria-hidden="true">description</span>
+                </header>
+                <div>
+                  <p class="font-headline text-headline-md text-on-surface" data-design-text-token="headline-md">JPEG</p>
+                  <p class="font-body text-body-sm text-on-surface-variant mt-xs" data-design-text-token="body-sm">JFIF 1.01 · Baseline DCT</p>
+                </div>
+              </article>
+
+              <!-- Card 2: Dimensions -->
+              <!-- COMPONENT: card-elevated -->
+              <article data-component-id="card-elevated" data-component-type="card" data-component-variant="elevated" class="h-full bg-surface-container border border-outline-variant rounded-md p-lg flex flex-col justify-between gap-sm">
+                <header class="flex items-center justify-between gap-sm">
+                  <h3 class="font-title text-title-md text-on-surface-variant" data-design-text-token="title-md">Dimensions</h3>
+                  <span class="material-symbols-outlined text-[18px] text-on-surface-variant" aria-hidden="true">aspect_ratio</span>
+                </header>
+                <div>
+                  <p class="font-headline text-headline-md text-on-surface tabular-nums" data-design-text-token="headline-md">4032 × 3024 px</p>
+                  <p class="font-body text-body-sm text-on-surface-variant mt-xs tabular-nums" data-design-text-token="body-sm">12.19 megapixels total</p>
+                </div>
+              </article>
+
+              <!-- Card 3: File Size -->
+              <!-- COMPONENT: card-elevated -->
+              <article data-component-id="card-elevated" data-component-type="card" data-component-variant="elevated" class="h-full bg-surface-container border border-outline-variant rounded-md p-lg flex flex-col justify-between gap-sm">
+                <header class="flex items-center justify-between gap-sm">
+                  <h3 class="font-title text-title-md text-on-surface-variant" data-design-text-token="title-md">File Size</h3>
+                  <span class="material-symbols-outlined text-[18px] text-on-surface-variant" aria-hidden="true">hard_drive</span>
+                </header>
+                <div>
+                  <p class="font-headline text-headline-md text-on-surface tabular-nums" data-design-text-token="headline-md">4.82 MB</p>
+                  <p class="font-mono text-mono-sm text-on-surface-variant mt-xs tabular-nums" data-design-text-token="mono-sm">5,054,128 bytes</p>
+                </div>
+              </article>
+
+              <!-- Card 4: Colour Mode -->
+              <!-- COMPONENT: card-elevated -->
+              <article data-component-id="card-elevated" data-component-type="card" data-component-variant="elevated" class="h-full bg-surface-container border border-outline-variant rounded-md p-lg flex flex-col justify-between gap-sm">
+                <header class="flex items-center justify-between gap-sm">
+                  <h3 class="font-title text-title-md text-on-surface-variant" data-design-text-token="title-md">Colour Mode</h3>
+                  <span class="material-symbols-outlined text-[18px] text-on-surface-variant" aria-hidden="true">contrast</span>
+                </header>
+                <div>
+                  <p class="font-headline text-headline-md text-on-surface" data-design-text-token="headline-md">RGB</p>
+                  <p class="font-body text-body-sm text-on-surface-variant mt-xs" data-design-text-token="body-sm">8-bit per channel · sRGB</p>
+                </div>
+              </article>
+
+              <!-- Card 5: Aspect Ratio -->
+              <!-- COMPONENT: card-elevated -->
+              <article data-component-id="card-elevated" data-component-type="card" data-component-variant="elevated" class="h-full bg-surface-container border border-outline-variant rounded-md p-lg flex flex-col justify-between gap-sm">
+                <header class="flex items-center justify-between gap-sm">
+                  <h3 class="font-title text-title-md text-on-surface-variant" data-design-text-token="title-md">Aspect Ratio</h3>
+                  <span class="material-symbols-outlined text-[18px] text-on-surface-variant" aria-hidden="true">crop_landscape</span>
+                </header>
+                <div>
+                  <p class="font-headline text-headline-md text-on-surface tabular-nums" data-design-text-token="headline-md">4:3</p>
+                  <p class="font-body text-body-sm text-on-surface-variant mt-xs tabular-nums" data-design-text-token="body-sm">1.333:1 sensor ratio</p>
+                </div>
+              </article>
+
+              <!-- Card 6: Orientation -->
+              <!-- COMPONENT: card-elevated -->
+              <article data-component-id="card-elevated" data-component-type="card" data-component-variant="elevated" class="h-full bg-surface-container border border-outline-variant rounded-md p-lg flex flex-col justify-between gap-sm">
+                <header class="flex items-center justify-between gap-sm">
+                  <h3 class="font-title text-title-md text-on-surface-variant" data-design-text-token="title-md">Orientation</h3>
+                  <span class="material-symbols-outlined text-[18px] text-on-surface-variant" aria-hidden="true">stay_current_landscape</span>
+                </header>
+                <div>
+                  <p class="font-headline text-headline-md text-on-surface" data-design-text-token="headline-md">Landscape</p>
+                  <p class="font-body text-body-sm text-on-surface-variant mt-xs" data-design-text-token="body-sm">EXIF Orientation 1 (Normal)</p>
+                </div>
+              </article>
+
+            </div>
+          </div>
+        </section>
+
+        <!-- SHA-256 Cryptographic Fingerprint Card -->
+        <section aria-labelledby="hash-heading">
+          <!-- COMPONENT: card-action -->
+          <article data-component-id="card-action" data-component-type="card" data-component-variant="action" class="bg-surface-container border border-outline-variant rounded-md p-lg flex flex-col gap-md">
+            <header class="flex flex-col sm:flex-row sm:items-center justify-between gap-sm">
+              <div class="flex items-center gap-sm">
+                <span class="material-symbols-outlined text-[20px] text-on-surface" aria-hidden="true">fingerprint</span>
+                <h2 id="hash-heading" class="font-title text-title-lg text-on-surface" data-design-text-token="title-lg">
+                  SHA-256 Fingerprint
+                </h2>
+              </div>
+
+              <!-- COMPONENT: button-secondary -->
+              <button id="copy-hash-btn" data-component-id="button-secondary" data-component-type="button" data-component-variant="secondary" type="button" class="inline-flex items-center justify-center gap-sm px-md py-sm rounded bg-surface-container text-on-surface border border-outline-variant font-label text-label-lg hover:bg-surface-container-high focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary transition-colors duration-state-change ease-state-change self-start sm:self-auto">
+                <span class="material-symbols-outlined text-[16px]" aria-hidden="true">content_copy</span>
+                <span id="copy-hash-label" data-design-text-token="label-lg">Copy SHA-256</span>
+              </button>
+            </header>
+
+            <div class="bg-surface border border-outline-variant rounded p-md">
+              <p id="sha256-value" class="font-mono text-mono-md text-on-surface break-all select-all" data-design-text-token="mono-md">e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855</p>
+            </div>
+
+            <footer class="flex flex-col sm:flex-row sm:items-center justify-between gap-xs text-on-surface-variant">
+              <p class="font-body text-body-sm" data-design-text-token="body-sm">
+                Computed locally from raw file bytes. Any single-bit modification alters this digest.
+              </p>
+              <span class="font-mono text-mono-sm shrink-0" data-design-text-token="mono-sm">64-char hex digest</span>
+            </footer>
+          </article>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <script>
+    (function () {
+      var toggleBtn = document.getElementById('mobile-nav-toggle');
+      var sidebar = document.getElementById('app-sidebar');
+      if (toggleBtn && sidebar) {
+        toggleBtn.addEventListener('click', function () {
+          var isHidden = sidebar.classList.contains('hidden');
+          if (isHidden) {
+            sidebar.classList.remove('hidden');
+            sidebar.classList.add('flex', 'flex-col');
+            toggleBtn.setAttribute('aria-expanded', 'true');
+          } else {
+            sidebar.classList.add('hidden');
+            sidebar.classList.remove('flex', 'flex-col');
+            toggleBtn.setAttribute('aria-expanded', 'false');
+          }
+        });
+      }
+
+      var copyBtn = document.getElementById('copy-hash-btn');
+      var copyLabel = document.getElementById('copy-hash-label');
+      var hashEl = document.getElementById('sha256-value');
+      if (copyBtn && copyLabel && hashEl) {
+        copyBtn.addEventListener('click', function () {
+          var text = hashEl.textContent.trim();
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).catch(function () {});
+          }
+          copyLabel.textContent = 'Copied';
+          setTimeout(function () {
+            copyLabel.textContent = 'Copy SHA-256';
+          }, 1500);
+        });
+      }
+    })();
+  </script>
+
+
+
+</body></html>

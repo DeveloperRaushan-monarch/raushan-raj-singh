@@ -8,7 +8,9 @@ Phases 1 and 2 are complete, with XMP/IPTC metadata extraction added as a Phase 
 
 XMP extraction supports JPEG APP1 packets, PNG `XML:com.adobe.xmp` text chunks, WebP `XMP ` RIFF chunks, and TIFF tag 700. IPTC extraction supports IPTC-IIM data in JPEG Photoshop APP13 `8BIM` resource 0x0404 and TIFF tag 33723. Only common creator, date, description, software, rights, headline, caption, keyword, byline, copyright, and location fields are displayed. Other XMP/IPTC storage locations are not parsed, and may appear as missing when they cannot be detected; formats outside the supported list are marked unsupported. JPEG Extended XMP is detected but not reassembled; if a standard packet is also present, its available fields are shown with that limitation. XMP packets with DTD/entity declarations are rejected; malformed packets are reported, and absence is not evidence of manipulation.
 
-Phase 3.1 adds opt-in JPEG-only Error Level Analysis (ELA): a single recompression, adjustable quality and residual scale, and an original/residual view. ELA is limited to 20 megapixels and is a descriptive indicator, not proof of editing. Phase 3.2 adds opt-in RGB intensity histograms for supported images, including a pooled channel distribution and separate monochrome channel views. Histograms are descriptive and are not authenticity tests. Assessment and PDF reports remain for later authorized work.
+Phase 3.1 adds opt-in JPEG-only Error Level Analysis (ELA): a single recompression, adjustable quality and residual scale, and an original/residual view. ELA is limited to 20 megapixels and is a descriptive indicator, not proof of editing. Phase 3.2 adds opt-in RGB intensity histograms for supported images, including a pooled channel distribution and separate monochrome channel views. Histograms are descriptive and are not authenticity tests. Phase 3.3 adds the deterministic three-state evidence assessment engine (`PT-EA/1.0.0`) with `LOW CONCERN`, `NEEDS REVIEW`, and `INSUFFICIENT EVIDENCE` outcomes, full rule/evaluation provenance, and an Evidence Assessment tab in `app.py`. Phase 4 adds monochrome A4 PDF forensic report generation (`core/report.py`) and the `"Forensic Reports"` tab in `app.py`, with GPS coordinates excluded and local paths redacted by default. Phase 5 integration and quality assurance is complete across all supported formats, privacy defaults, and resource limits.
+
+Phases 6A–6D add the comprehensive 7-stage metadata inventory (`core/metadata_models.py`, `core/metadata_inventory.py`) and dynamic Metadata Explorer UI (`server.py` + `frontend/`) with search, filters, MakerNotes raw preservation, ICC support, and strict GPS exclusion. Local ClamAV malware scanning (Phases B–D: `core/malware_models.py`, `core/malware_scanner.py`, [docs/CLAMAV_SETUP.md](docs/CLAMAV_SETUP.md)) scans validated uploads locally via `clamscan` (`shell=False`, no external uploads) and displays `NO_KNOWN_THREAT`, exact `MALWARE_DETECTED` signature names, or `SCAN_INCOMPLETE` inside the existing Image Analysis screen, completely separate from `PT-EA/1.0.0`. Phase E adds non-GPS JSON/CSV metadata exports (`GET /api/metadata/export`) with spreadsheet formula sanitization and optional ClamAV malware scan reporting in A4 PDF reports (`ReportOptions.include_malware_scan`).
 
 Read the project specifications before starting development:
 
@@ -16,6 +18,7 @@ Read the project specifications before starting development:
 - `architecture.in` — proposed software boundaries and data flow
 - `rule.in` — engineering, privacy, and phase rules
 - `phases.in` — phase plan and current status
+- `assessment_spec.in` — approved Phase 3.3 evidence-assessment specification (`PT-EA/1.0.0`)
 - `design.in` — UI/UX specification
 - `memory.in` — durable project decisions and environment notes
 - `requirements.txt` — Python dependency list
@@ -50,15 +53,23 @@ Install packages from `requirements.txt` only after the project owner authorizes
 python -m pip install -r requirements.txt
 ```
 
-## Run the foundation app
+## Run the application
 
 After dependencies are installed and the environment is active:
 
+**Recommended — Stitch Monochrome Web Workspace (`server.py` + `frontend/`):**
+
 ```sh
-streamlit run app.py
+.venv/bin/python server.py
 ```
 
-The current app supports the completed Phase 1 inspection and Phase 2 metadata intelligence workflows.
+Then open `http://127.0.0.1:8501` in your browser.
+
+**Legacy Streamlit interface (`app.py`):**
+
+```sh
+.venv/bin/streamlit run app.py
+```
 
 ## Project structure
 

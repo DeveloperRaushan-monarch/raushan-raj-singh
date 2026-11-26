@@ -56,7 +56,7 @@ def test_comparable_capture_timestamps_are_checked():
     )
     findings = inspect_metadata_integrity(properties(), fields)
     timestamp = next(item for item in findings if item.finding_id == "timestamp-original-digitized-differ")
-    assert timestamp.relevance == "Review"
+    assert timestamp.relevance == "Informational"
     assert "does not establish editing" in timestamp.confidence_limitations
 
 

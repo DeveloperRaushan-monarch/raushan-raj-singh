@@ -137,9 +137,24 @@ Metadata stays in the shared `MetadataField` collection and uses `source` values
 - Alpha transparency is discarded during RGB conversion and embedded color profiles are not applied. Histograms are descriptive and cannot establish image authenticity or prove manipulation.
 - The interface uses the already-declared Plotly dependency with monochrome tones, line styles, labeled axes, and intensity range. No dependency was added.
 
-## 7. Assessment orchestration
+## 7. Implemented Phase 3.3 assessment orchestration (`PT-EA/1.0.0`)
 
-Run only checks applicable to the detected/decoded image and requested features. Record skipped or unsupported checks as such. The assessment engine uses documented rules over completed check results. Missing metadata alone and an editor/software tag alone are not sufficient for NEEDS REVIEW. If the evidence cannot support a meaningful assessment, return INSUFFICIENT EVIDENCE. A successful LOW CONCERN result describes the checks performed and does not imply authenticity.
+The assessment engine (`core/assessment_models.py`, `core/assessment_registry.py`, `core/assessment_evaluator.py`, `core/assessment_engine.py`) summarizes only available results from registered, completed rules and explains their limits. It does not determine whether an image is authentic, genuine, or manipulated.
+
+- **Versioned registry (`PT-EA/1.0.0`)**: Defines `metadata-field-value-validity`, `exif-original-digitized-time-comparison`, and `exif-decoded-dimension-comparison` with explicit applicability, coverage criticality, deterministic predicates, finding IDs/relevances, and substantive-coverage conditions.
+- **Provenance & validation**: Every `AssessmentFinding` and `RuleEvaluation` carries `rule_set_version`, `rule_id`, `evaluation_id`, and `check_id`. Legacy Phase 2 `Finding` records without provenance are excluded from assessment input.
+- **Deterministic outcome rules (A–D)**: Malformed or incompatible records produce `INSUFFICIENT EVIDENCE`; registered `Review` findings produce `NEEDS REVIEW`; `LOW CONCERN` requires validated decoding, substantive coverage (excluding software tags alone), and no incomplete/undetermined `coverage_critical` rules; otherwise `INSUFFICIENT EVIDENCE`.
+
+## 7.2 Custom Stitch Frontend and Local HTTP Server (`server.py` + `frontend/`)
+
+- `server.py` (`127.0.0.1` Python standard-library `ThreadingHTTPServer`) serves the 8-screen Stitch monochrome workspace (`frontend/index.html`, `frontend/styles.css`, `frontend/app.js`) with bounded, TTL-expiring in-memory sessions (`SessionStore`), random `secrets` session IDs, session-scoped PDF download tokens, and zero external runtime CDNs.
+- `app.py` is preserved as the legacy Streamlit entry point. Both frontends call the exact same `core/*` and `utils/*` modules.
+
+## 7.1 Implemented Phase 4 PDF reporting (`core/report.py`)
+
+- Consumes existing `ImageInspection`, `AssessmentResult` (via `assess_inspection`), and optional `ELAResult`, `HistogramResult`, and `GPSResult` without recalculating assessment outcomes.
+- Generates monochrome A4 PDFs offline using ReportLab (`Helvetica` / `Courier`) with Report ID, UTC timestamp, `PT-EA/1.0.0` rule-set version, SHA-256, metadata statuses, assessment provenance, and scientific disclaimers.
+- Defaults `include_gps=False` and `redact_local_paths=True` (stripping both POSIX/macOS and Windows paths).
 
 ## 8. Error handling
 
