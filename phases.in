@@ -7,8 +7,8 @@ Use NOT STARTED, IN PROGRESS, BLOCKED, or COMPLETE. A phase is COMPLETE only whe
 ## Current status
 
 - Phase 0 — COMPLETE (2026-11-25). The user explicitly authorized a greenfield foundation. Python 3.11.0 was confirmed; the existing project-local environment was verified; the requested scaffold, documentation, starter Streamlit entry point, README, license notice, and gitignore were created; and local main/develop branches were prepared without a remote. No forensic features were implemented. See memory.in for environment details.
-- Phase 1 — COMPLETE (2026-11-25). Implemented content-based upload validation, bounded decoding, image properties, common EXIF fields/statuses, SHA-256, and a working single-image Streamlit inspection view. Rechecks fixed valid EXIF orientation labels being marked invalid and stopped reporting palette images as reliably 8-bit per channel. Verified with 29 passing Pytest cases, AppTest script execution, and a localhost Streamlit health check. XMP/IPTC parsing remains explicitly unsupported; GPS, integrity findings, comparison, ELA, histograms, assessment, and PDF reports remain for later phases.
-- Phase 2 — COMPLETE (2026-11-25). Added structured metadata availability/validity findings, timestamp and EXIF dimension consistency checks, on-demand GPS reveal/clear behavior, and two-image property/hash/metadata comparison with a bounded sampled RGB difference indicator. GPS extraction is covered for JPEG, PNG, WEBP, and TIFF. Verified with 44 passing Pytest cases, pip check, diff check, and local app health/page responses. AppTest timed out in the current environment on a later repeat, so the click-flow result is not counted as a final verification. No assessment verdict or authenticity score was added; those remain Phase 3.
+- Phase 1 — COMPLETE (2026-11-25). Implemented content-based upload validation, bounded decoding, image properties, common EXIF fields/statuses, SHA-256, and a working single-image Streamlit inspection view. Rechecks fixed valid EXIF orientation labels being marked invalid and stopped reporting palette images as reliably 8-bit per channel. At Phase 1 completion, XMP/IPTC parsing was unsupported; the later Phase 2 metadata-support extension added the formats and storage locations listed below. GPS, integrity findings, comparison, ELA, histograms, assessment, and PDF reports were still to come at that milestone.
+- Phase 2 — COMPLETE (2026-11-25). Added structured metadata availability/validity findings, timestamp and EXIF dimension consistency checks, on-demand GPS reveal/clear behavior, two-image property/hash/metadata comparison with a bounded sampled RGB difference indicator, and XMP/IPTC extraction. XMP locations: JPEG APP1, PNG `XML:com.adobe.xmp` text chunks, WebP `XMP ` RIFF chunks, TIFF tag 700. IPTC locations: JPEG Photoshop APP13 `8BIM` resource 0x0404, TIFF tag 33723. JPEG Extended XMP is detected but unsupported. Verified with 57 passing Pytest cases, pip check, diff check, and local app health/page responses. AppTest timed out in the current environment on a later repeat, so click-flow verification is not counted. No assessment verdict or authenticity score was added; those remain Phase 3.
 - Phase 3 — NOT STARTED.
 - Phase 4 — NOT STARTED.
 - Phase 5 — NOT STARTED.
@@ -77,7 +77,7 @@ Exit criteria: end-to-end supported workflows function; relevant test suite pass
 - Summary: Added bounded content-based validation and a one-image inspection workflow for supported file properties, common EXIF fields/statuses, and original-byte SHA-256.
 - Tests and results: 29 passed after recheck; AppTest script execution and Streamlit localhost health check passed; pip check found no broken requirements.
 - Documentation updated: README.md, architecture.in, phases.in, memory.in.
-- Remaining issues: XMP/IPTC parsing is unsupported; phases 2–5 remain.
+- Remaining issues: XMP/IPTC parsing is unsupported; phases 3–5 remain.
 - User report delivered: Yes.
 
 - Phase: 2 — Metadata intelligence
@@ -85,7 +85,7 @@ Exit criteria: end-to-end supported workflows function; relevant test suite pass
 - Summary: Added explainable metadata findings and conservative consistency checks; GPS remains hidden until explicitly revealed and can be cleared; comparison reports property, metadata, hash, and supported sampled-pixel differences.
 - Tests and results: 44 passed; pip check found no broken requirements; diff check passed; localhost health and page endpoints returned 200. AppTest timed out on a later repeat.
 - Documentation updated: README.md, architecture.in, phases.in, memory.in.
-- Remaining issues: XMP/IPTC parsing is unsupported; sampled pixel indicator is descriptive only; assessment, ELA, histograms, and reports remain.
+- Remaining issues: XMP/IPTC storage locations outside those listed in the current-status summary are unsupported; sampled pixel indicator is descriptive only; assessment, ELA, histograms, and reports remain.
 - User report delivered: Yes.
 
 Append one entry after each completed phase:

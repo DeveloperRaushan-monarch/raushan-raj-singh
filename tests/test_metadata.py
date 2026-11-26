@@ -78,8 +78,8 @@ def test_non_exif_format_marks_fields_unsupported():
     assert make.status is MetadataStatus.UNSUPPORTED
 
 
-def test_xmp_and_iptc_are_reported_as_unsupported_in_phase_one():
+def test_missing_xmp_and_iptc_in_jpeg_are_reported_as_missing():
     fields = extract_metadata(make_jpeg(), "JPEG")
     by_key = {field.key: field for field in fields}
-    assert by_key["xmp"].status is MetadataStatus.UNSUPPORTED
-    assert by_key["iptc"].status is MetadataStatus.UNSUPPORTED
+    assert by_key["xmp"].status is MetadataStatus.MISSING
+    assert by_key["iptc"].status is MetadataStatus.MISSING

@@ -9,6 +9,8 @@ import exifread
 from PIL import ExifTags, Image
 
 from core.models import MetadataField, MetadataStatus
+from core.iptc import extract_iptc
+from core.xmp import extract_xmp
 
 
 FIELD_SPECS: tuple[tuple[str, str, tuple[str, ...], str], ...] = (
@@ -192,19 +194,11 @@ def extract_metadata(file_bytes: bytes, image_format: str) -> tuple[MetadataFiel
                 label=label,
                 value=value,
                 status=status,
-                source="EXIF" if value is not None else None,
+                source="EXIF",
                 note=note,
             )
         )
 
-    for key, label in (("xmp", "XMP metadata"), ("iptc", "IPTC metadata")):
-        fields.append(
-            MetadataField(
-                key=key,
-                label=label,
-                value=None,
-                status=MetadataStatus.UNSUPPORTED,
-                note="XMP/IPTC parsing is not implemented in Phase 1.",
-            )
-        )
+    fields.extend(extract_xmp(file_bytes, image_format))
+    fields.extend(extract_iptc(file_bytes, image_format))
     return tuple(fields)

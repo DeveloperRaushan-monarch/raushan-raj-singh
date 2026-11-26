@@ -56,16 +56,28 @@ def _render_properties(inspection: ImageInspection) -> None:
 
 
 def _render_metadata(inspection: ImageInspection) -> None:
-    rows = [
-        {
-            "Field": field.label,
-            "Value": field.value if field.value is not None else "Not available",
-            "Status": field.status.value,
-            "Note": field.note or "",
-        }
-        for field in inspection.metadata
-    ]
-    st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+    for source, title in (("EXIF", "EXIF"), ("XMP", "XMP"), ("IPTC", "IPTC")):
+        source_fields = [field for field in inspection.metadata if field.source == source]
+        st.markdown(f"##### {title}")
+        if not source_fields:
+            st.info(f"No {title} fields are available for this image.")
+            continue
+        packet_key = "xmp" if source == "XMP" else "iptc" if source == "IPTC" else None
+        packet = next((field for field in source_fields if field.key == packet_key), None) if packet_key else None
+        if packet is not None and packet.status is MetadataStatus.MISSING:
+            st.info(f"No {title} metadata was found in the supported storage location.")
+        elif packet is not None and packet.status is MetadataStatus.UNSUPPORTED:
+            st.info(f"{title} extraction is unsupported for this image format.")
+        rows = [
+            {
+                "Field": field.label,
+                "Value": field.value if field.value is not None else "Not available",
+                "Status": field.status.value,
+                "Note": field.note or "",
+            }
+            for field in source_fields
+        ]
+        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
     st.caption("Missing metadata is not evidence that information was removed.")
 
 

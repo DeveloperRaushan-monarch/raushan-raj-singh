@@ -113,6 +113,14 @@ Finalize concrete types during implementation, but keep these concepts consisten
 
 Use deterministic serialization-friendly values for PDF generation. Do not place uploaded bytes or hidden GPS coordinates in logs or ordinary diagnostic messages.
 
+## 6.1 Implemented metadata extraction coverage
+
+Metadata stays in the shared `MetadataField` collection and uses `source` values `EXIF`, `XMP`, or `IPTC` so the interface and comparisons can keep the standards distinct.
+
+- XMP: JPEG APP1 packets with the Adobe XMP identifier; PNG text chunks under `XML:com.adobe.xmp`; WebP RIFF `XMP ` chunks; TIFF tag 700. The parser extracts common creator, creation/modification date, description, creator tool, and rights properties. JPEG Extended XMP is detected but not reassembled. XML is limited to 1 MB; DTD and entity declarations are rejected.
+- IPTC: IPTC-IIM datasets in JPEG Photoshop APP13 `8BIM` resource 0x0404 and TIFF tag 33723. The parser extracts common headline, caption, repeated keywords, byline, copyright, date, city, sublocation, and country datasets, with bounds checks on resource and dataset lengths.
+- BMP, GIF, and other formats are unsupported for XMP/IPTC. Only the listed storage locations are parsed; detected JPEG Extended XMP is marked Unsupported, while other unrecognized locations may be indistinguishable from absent metadata and can appear as Missing. Malformed content is Invalid and parser failures are Unavailable. These statuses do not imply manipulation.
+
 ## 7. Assessment orchestration
 
 Run only checks applicable to the detected/decoded image and requested features. Record skipped or unsupported checks as such. The assessment engine uses documented rules over completed check results. Missing metadata alone and an editor/software tag alone are not sufficient for NEEDS REVIEW. If the evidence cannot support a meaningful assessment, return INSUFFICIENT EVIDENCE. A successful LOW CONCERN result describes the checks performed and does not imply authenticity.
