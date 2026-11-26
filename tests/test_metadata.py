@@ -1,5 +1,6 @@
 from io import BytesIO
 
+import pytest
 from PIL import Image
 
 from core.metadata import extract_metadata
@@ -46,6 +47,21 @@ def test_accepts_exifread_orientation_labels_for_valid_values():
         fields = extract_metadata(make_jpeg(exif), "JPEG")
         orientation = next(field for field in fields if field.key == "orientation")
         assert orientation.status is MetadataStatus.PRESENT
+
+
+@pytest.mark.parametrize("image_format", ["PNG", "WEBP", "TIFF"])
+def test_extracts_exif_from_other_supported_exif_containers(image_format):
+    exif = Image.Exif()
+    exif[271] = "TEST MAKE"
+    exif[274] = 6
+    image = Image.new("RGB", (8, 8), "white")
+    output = BytesIO()
+    image.save(output, format=image_format, exif=exif)
+
+    fields = {field.key: field for field in extract_metadata(output.getvalue(), image_format)}
+    assert fields["make"].value == "TEST MAKE"
+    assert fields["make"].status is MetadataStatus.PRESENT
+    assert fields["orientation"].status is MetadataStatus.PRESENT
 
 
 def test_non_exif_format_marks_fields_unsupported():

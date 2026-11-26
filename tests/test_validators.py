@@ -61,3 +61,25 @@ def test_detects_extension_mismatch_from_content():
 def test_strips_client_path_from_filename():
     result = validate_image_bytes(make_image_bytes("PNG"), r"C:\private\photo.png")
     assert result.image_format == "PNG"
+
+
+def test_validates_animated_gif_frames_and_transparency():
+    palette = [0, 0, 0, 255, 255, 255] + [0] * 762
+    first = Image.new("P", (4, 4), 0)
+    first.putpalette(palette)
+    second = Image.new("P", (4, 4), 1)
+    second.putpalette(palette)
+    output = BytesIO()
+    first.save(
+        output,
+        format="GIF",
+        save_all=True,
+        append_images=[second],
+        transparency=0,
+        duration=100,
+        loop=0,
+    )
+
+    result = validate_image_bytes(output.getvalue(), "animated.gif")
+    assert result.frame_count == 2
+    assert result.has_transparency is True

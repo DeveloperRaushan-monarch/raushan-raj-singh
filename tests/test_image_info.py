@@ -30,3 +30,14 @@ def test_reports_extension_mismatch_without_trusting_extension():
     assert result.image_format == "PNG"
     assert result.mime_type == "image/png"
     assert result.extension_mismatch is True
+
+
+def test_palette_image_bit_depth_is_unavailable_when_not_reliably_known():
+    image = Image.new("P", (4, 4), 0)
+    image.putpalette([0, 0, 0, 255, 255, 255] + [0] * 762)
+    buffer = BytesIO()
+    image.save(buffer, format="GIF")
+
+    result = extract_image_properties(buffer.getvalue(), "palette.gif")
+    assert result.color_mode == "P"
+    assert result.bit_depth_per_channel is None

@@ -70,7 +70,6 @@ def _bit_depth(image: Image.Image) -> int | None:
     return {
         "1": 1,
         "L": 8,
-        "P": 8,
         "RGB": 8,
         "RGBA": 8,
         "CMYK": 8,
