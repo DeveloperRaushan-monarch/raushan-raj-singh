@@ -28,6 +28,7 @@ pages/
     about.py
 core/
     __init__.py
+    models.py
     image_info.py
     metadata.py
     metadata_integrity.py
@@ -52,6 +53,10 @@ tests/
     test_image_info.py
     test_metadata.py
     test_hashing.py
+    test_analysis.py
+    test_metadata_integrity.py
+    test_gps.py
+    test_comparison.py
     test_integrity.py
     test_assessment.py
     test_comparison.py
@@ -108,9 +113,48 @@ Finalize concrete types during implementation, but keep these concepts consisten
 
 Use deterministic serialization-friendly values for PDF generation. Do not place uploaded bytes or hidden GPS coordinates in logs or ordinary diagnostic messages.
 
-## 7. Assessment orchestration
+## 6.1 Implemented metadata extraction coverage
 
-Run only checks applicable to the detected/decoded image and requested features. Record skipped or unsupported checks as such. The assessment engine uses documented rules over completed check results. Missing metadata alone and an editor/software tag alone are not sufficient for NEEDS REVIEW. If the evidence cannot support a meaningful assessment, return INSUFFICIENT EVIDENCE. A successful LOW CONCERN result describes the checks performed and does not imply authenticity.
+Metadata stays in the shared `MetadataField` collection and uses `source` values `EXIF`, `XMP`, or `IPTC` so the interface and comparisons can keep the standards distinct.
+
+- XMP: JPEG APP1 packets with the Adobe XMP identifier; PNG text chunks under `XML:com.adobe.xmp`; WebP RIFF `XMP ` chunks; TIFF tag 700. The parser extracts common creator, creation/modification date, description, creator tool, and rights properties. JPEG Extended XMP is detected but not reassembled; if a standard packet is also present, its fields are returned with a limitation note. XML is limited to 1 MB; DTD and entity declarations are rejected.
+- IPTC: IPTC-IIM datasets in JPEG Photoshop APP13 `8BIM` resource 0x0404 and TIFF tag 33723. The parser extracts common headline, caption, repeated keywords, byline, copyright, date, city, sublocation, and country datasets, with bounds checks on resource and dataset lengths.
+- BMP, GIF, and other formats are unsupported for XMP/IPTC. Only the listed storage locations are parsed; detected JPEG Extended XMP is marked Unsupported, while other unrecognized locations may be indistinguishable from absent metadata and can appear as Missing. Malformed content is Invalid and parser failures are Unavailable. These statuses do not imply manipulation.
+
+## 6.2 Implemented Phase 3.1 ELA coverage
+
+- ELA is opt-in and accepts only content-detected, fully validated JPEG files.
+- Recompress the EXIF-orientation-adjusted decoded RGB pixels once at the selected JPEG quality, calculate absolute per-channel differences, and amplify the residual for display.
+- JPEG quality is configurable from 50 to 100; error scale is configurable from 1× to 20×. Processing is capped at 20 megapixels before full decode; larger inputs are rejected rather than resized.
+- Results include the residual PNG, mean absolute RGB difference, maximum channel difference, changed-pixel share, parameters, method, and limitations. ELA output is descriptive and cannot establish that an image was edited or manipulated.
+- No third-party dependency was added; Pillow performs the decode, recompression, and residual operations.
+
+## 6.3 Implemented Phase 3.2 RGB histogram coverage
+
+- RGB histograms are opt-in and use the existing content validation, upload, pixel, and frame-count limits for supported image formats.
+- Each frame is converted to RGB and counted in 256 intensity bins per channel, processing bounded image tiles to limit temporary allocations. The combined chart pools red, green, and blue channel-value counts; separate charts show each channel.
+- Animated images pool all decoded frames into one histogram. The results include dimensions, frame count, pixel count, counts, method, and limitations.
+- Alpha transparency is discarded during RGB conversion and embedded color profiles are not applied. Histograms are descriptive and cannot establish image authenticity or prove manipulation.
+- The interface uses the already-declared Plotly dependency with monochrome tones, line styles, labeled axes, and intensity range. No dependency was added.
+
+## 7. Implemented Phase 3.3 assessment orchestration (`PT-EA/1.0.0`)
+
+The assessment engine (`core/assessment_models.py`, `core/assessment_registry.py`, `core/assessment_evaluator.py`, `core/assessment_engine.py`) summarizes only available results from registered, completed rules and explains their limits. It does not determine whether an image is authentic, genuine, or manipulated.
+
+- **Versioned registry (`PT-EA/1.0.0`)**: Defines `metadata-field-value-validity`, `exif-original-digitized-time-comparison`, and `exif-decoded-dimension-comparison` with explicit applicability, coverage criticality, deterministic predicates, finding IDs/relevances, and substantive-coverage conditions.
+- **Provenance & validation**: Every `AssessmentFinding` and `RuleEvaluation` carries `rule_set_version`, `rule_id`, `evaluation_id`, and `check_id`. Legacy Phase 2 `Finding` records without provenance are excluded from assessment input.
+- **Deterministic outcome rules (A–D)**: Malformed or incompatible records produce `INSUFFICIENT EVIDENCE`; registered `Review` findings produce `NEEDS REVIEW`; `LOW CONCERN` requires validated decoding, substantive coverage (excluding software tags alone), and no incomplete/undetermined `coverage_critical` rules; otherwise `INSUFFICIENT EVIDENCE`.
+
+## 7.2 Custom Stitch Frontend and Local HTTP Server (`server.py` + `frontend/`)
+
+- `server.py` (`127.0.0.1` Python standard-library `ThreadingHTTPServer`) serves the 8-screen Stitch monochrome workspace (`frontend/index.html`, `frontend/styles.css`, `frontend/app.js`) with bounded, TTL-expiring in-memory sessions (`SessionStore`), random `secrets` session IDs, session-scoped PDF download tokens, and zero external runtime CDNs.
+- `app.py` is preserved as the legacy Streamlit entry point. Both frontends call the exact same `core/*` and `utils/*` modules.
+
+## 7.1 Implemented Phase 4 PDF reporting (`core/report.py`)
+
+- Consumes existing `ImageInspection`, `AssessmentResult` (via `assess_inspection`), and optional `ELAResult`, `HistogramResult`, and `GPSResult` without recalculating assessment outcomes.
+- Generates monochrome A4 PDFs offline using ReportLab (`Helvetica` / `Courier`) with Report ID, UTC timestamp, `PT-EA/1.0.0` rule-set version, SHA-256, metadata statuses, assessment provenance, and scientific disclaimers.
+- Defaults `include_gps=False` and `redact_local_paths=True` (stripping both POSIX/macOS and Windows paths).
 
 ## 8. Error handling
 

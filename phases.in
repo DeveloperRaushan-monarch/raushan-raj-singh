@@ -7,11 +7,11 @@ Use NOT STARTED, IN PROGRESS, BLOCKED, or COMPLETE. A phase is COMPLETE only whe
 ## Current status
 
 - Phase 0 — COMPLETE (2026-11-25). The user explicitly authorized a greenfield foundation. Python 3.11.0 was confirmed; the existing project-local environment was verified; the requested scaffold, documentation, starter Streamlit entry point, README, license notice, and gitignore were created; and local main/develop branches were prepared without a remote. No forensic features were implemented. See memory.in for environment details.
-- Phase 1 — NOT STARTED.
-- Phase 2 — NOT STARTED.
-- Phase 3 — NOT STARTED.
-- Phase 4 — NOT STARTED.
-- Phase 5 — NOT STARTED.
+- Phase 1 — COMPLETE (2026-11-25). Implemented content-based upload validation, bounded decoding, image properties, common EXIF fields/statuses, SHA-256, and a working single-image Streamlit inspection view. Rechecks fixed valid EXIF orientation labels being marked invalid and stopped reporting palette images as reliably 8-bit per channel. At Phase 1 completion, XMP/IPTC parsing was unsupported; the later Phase 2 metadata-support extension added the formats and storage locations listed below. GPS, integrity findings, comparison, ELA, histograms, assessment, and PDF reports were still to come at that milestone.
+- Phase 2 — COMPLETE (2026-11-25). Added structured metadata availability/validity findings, timestamp and EXIF dimension consistency checks, on-demand GPS reveal/clear behavior, two-image property/hash/metadata comparison with a bounded sampled RGB difference indicator, and XMP/IPTC extraction. XMP locations: JPEG APP1, PNG `XML:com.adobe.xmp` text chunks, WebP `XMP ` RIFF chunks, TIFF tag 700. IPTC locations: JPEG Photoshop APP13 `8BIM` resource 0x0404, TIFF tag 33723. JPEG Extended XMP is detected but not reassembled; a standard packet is retained with a limitation note when present. Rechecked with 65 passing tests, including six focused AppTest cases and one complete AppTest flow; pip check, diff check, and local app health/page checks pass. The earlier AppTest timeout did not reproduce and its cause is unknown. AppTest renders all four tabs but does not expose tab selection; actual tab switching is not covered. No assessment verdict or authenticity score was added; those remain Phase 3.
+- Phase 3 — COMPLETE (2026-11-25). Phase 3.1 (JPEG-only ELA), Phase 3.2 (RGB histograms), and Phase 3.3 (deterministic three-state evidence assessment `PT-EA/1.0.0`) are COMPLETE.
+- Phase 4 — COMPLETE (2026-11-25). Implemented monochrome A4 PDF forensic reporting in `core/report.py` and integrated the `"Forensic Reports"` tab in `app.py`.
+- **Custom Stitch Frontend Integration — COMPLETE (2026-11-26).** Implemented the 8-screen offline Stitch workspace (`frontend/index.html`, `frontend/styles.css`, `frontend/app.js`) served by `server.py` (`127.0.0.1` `ThreadingHTTPServer` with bounded TTL-expiring in-memory sessions, strict method/route/size validation, session-scoped PDF download tokens, and full reuse of `core/*` and `utils/*`). `app.py` is preserved as the legacy Streamlit entry point. Verified with 7 new tests in `tests/test_web_app.py` (183 tests total passing). Live Chrome DevTools browser screenshot capture could not run (`DevToolsActivePort` missing).
 
 ## Phase 0 — Inspection and preparation
 
@@ -54,11 +54,33 @@ Tasks: documented JPEG-only ELA; RGB histograms; deterministic assessment engine
 
 Exit criteria: unsupported formats do not receive ELA; analyses expose method and limitations; assessment is one of the three allowed labels with documented rules; no fake scores or authenticity claims; tests cover applicability and rules.
 
+### Phase 3.1 — JPEG-only Error Level Analysis
+
+Authorization: The user explicitly requested “implement Phase 3.1” on 2026-11-25 after reviewing the project documentation and architecture.
+
+Scope: JPEG-only one-pass recompression residual, adjustable quality and display scale, a bounded core result, Streamlit side-by-side view, and tests. This subphase does not include histograms, assessments, or assessment-driven findings.
+
+Exit criteria: content-detected JPEG only; non-JPEG and invalid inputs are handled safely; resource limits are enforced before full decode; method and limitations are shown; results remain in session state and are cleared when the input or parameters change; tests pass.
+
+### Phase 3.2 — RGB histograms
+
+Authorization: The user authorized Phase 3 and specified Phase 3.2 (RGB histograms) on 2026-11-25.
+
+Scope: Opt-in 256-bin RGB intensity histograms for supported validated images, a pooled channel-value distribution, labeled separate channel views in monochrome styles, and clear method/limitations. No assessment, verdict, or authenticity score is part of this subphase.
+
+Exit criteria: supported images are validated before counting; all frames and counted values are clearly described; chart axes and channel labels are clear; analysis is opt-in and resource-bounded; tests pass; documentation is updated.
+
+Status: COMPLETE. Counts from every frame are pooled and labeled; the UI is opt-in and uses the existing Plotly dependency with monochrome line styles. See the Phase 3.2 completion record below.
+
+### Later Phase 3 subphase
+
+- Phase 3.3 — Deterministic three-state assessment and findings integration (COMPLETE, 2026-11-25). Implemented `PT-EA/1.0.0` in `core/assessment_models.py`, `core/assessment_registry.py`, `core/assessment_evaluator.py`, and `core/assessment_engine.py`, aligned `core/metadata_consistency.py`, and integrated the Evidence Assessment tab in `app.py`.
+
 ## Phase 4 — Reporting
 
 Authorization command: START PHASE 4
 
-Tasks: PDF report content/layout; selected sections; report ID/date; privacy redaction and GPS exclusion; report generation validation.
+Tasks: PDF report content/layout; selected sections; report ID/date; privacy redaction and GPS exclusion; report generation validation. Reports present available findings and their limitations; they do not certify whether an image is authentic.
 
 Exit criteria: report reflects actual analysis and user-selected sections; GPS is excluded by default; limitations/methods/hash are present; no unintended local paths or sensitive values leak; tests validate generated report content.
 
@@ -71,6 +93,70 @@ Tasks: integration; macOS/Windows checks; privacy and security review; performan
 Exit criteria: end-to-end supported workflows function; relevant test suite passes; platform-specific issues are resolved or documented; privacy defaults are verified; documentation and known limitations are current; final report is delivered.
 
 ## Phase completion record
+
+- Phase: 1 — Image inspection foundation
+- Date: 2026-11-25
+- Summary: Added bounded content-based validation and a one-image inspection workflow for supported file properties, common EXIF fields/statuses, and original-byte SHA-256.
+- Tests and results: 29 passed after recheck; AppTest script execution and Streamlit localhost health check passed; pip check found no broken requirements.
+- Documentation updated: README.md, architecture.in, phases.in, memory.in.
+- Remaining issues at Phase 1 completion: XMP/IPTC parsing was unsupported at that milestone; a later Phase 2 extension added the currently documented coverage. Phases 3–5 remained.
+- User report delivered: Yes.
+
+- Phase: 2 — Metadata intelligence
+- Date: 2026-11-25
+- Summary: Added explainable metadata findings and conservative consistency checks; GPS remains hidden until explicitly revealed and can be cleared; comparison reports property, metadata, hash, and supported sampled-pixel differences.
+- Tests and results: 44 passed; pip check found no broken requirements; diff check passed; localhost health and page endpoints returned 200. AppTest timed out on a later repeat.
+- Documentation updated: README.md, architecture.in, phases.in, memory.in.
+- Remaining issues: XMP/IPTC storage locations outside those listed in the current-status summary are unsupported; sampled pixel indicator is descriptive only; assessment, ELA, histograms, and reports remain.
+- User report delivered: Yes.
+
+- Phase: 3.1 — JPEG-only Error Level Analysis
+- Date: 2026-11-25
+- Summary: Added opt-in JPEG recompression residual analysis with adjustable quality and display scale, a 20-megapixel processing bound, results/limitations display, and upload/parameter session-state handling.
+- Latest tests and results: 16 focused ELA tests, 8 AppTest interaction tests, and 82 tests in the full suite passed; pip check found no broken requirements; git diff check passed; Streamlit health and page endpoints returned 200. No packages were added.
+- Documentation updated: README.md, architecture.in, phases.in, memory.in.
+- Remaining issues: Actual browser tab selection is not covered by Streamlit AppTest; histograms and assessment remain in later Phase 3 subphases.
+- User report delivered: Yes.
+
+- Phase: 3.2 — RGB histograms
+- Date: 2026-11-25
+- Summary: Added opt-in, validated 256-bin RGB histograms with bounded image-tile processing, pooled all-frame counts, a combined channel-value distribution, and labeled monochrome channel charts.
+- Tests and results: After the multi-page TIFF correction, the prior full suite had 91 passing tests. Follow-up verification passed: 8 histogram tests, 10 AppTest interaction tests (including a clear-upload check for stale histogram state and display), and 92 tests in the latest full suite. `pip check` found no broken requirements; `git diff --check` passed. No packages were added.
+- Documentation updated: README.md, architecture.in, phases.in, memory.in.
+- Remaining issues: AppTest does not verify the visual appearance of browser-rendered Plotly charts. Phase 3.3 assessment and findings integration remain.
+- User report delivered: Yes.
+
+- Phase: 3.3 — Deterministic three-state evidence assessment (`PT-EA/1.0.0`)
+- Date: 2026-11-25
+- Summary: Implemented immutable assessment models and provenance (`core/assessment_models.py`), versioned rule registry `PT-EA/1.0.0` (`core/assessment_registry.py`), deterministic rule evaluator (`core/assessment_evaluator.py`), and outcome engine Rules A–D (`core/assessment_engine.py`); aligned `core/metadata_consistency.py` timestamp relevance (`Informational`) and dimension orientation edge cases; integrated the Evidence Assessment tab into `app.py`.
+- Tests and results: 62 tests in `tests/test_assessment.py` and 154 tests in the full suite passed after hardening; `pip check` and `git diff --check` passed. No packages were added.
+- Documentation updated: README.md, architecture.in, phases.in, memory.in.
+- Remaining issues: Phase 5 (integration and QA) remains NOT STARTED. Browser visual appearance of the Evidence Assessment tab is not covered by AppTest.
+- User report delivered: Yes.
+
+- Phase: 4 — PDF forensic reporting
+- Date: 2026-11-25
+- Summary: Implemented monochrome A4 PDF report generation (`core/report.py`) consuming `ImageInspection`, `AssessmentResult`, and optional `ELAResult`/`HistogramResult`/`GPSResult` with GPS excluded by default, macOS/Windows path redaction, and the `"Forensic Reports"` tab in `app.py`.
+- Tests and results: 8 tests in `tests/test_report.py` (including `AppTest` default GPS exclusion and PDF generation) and 162 tests in the complete suite passed; `pip check` and `git diff --check` passed. No packages were added.
+- Documentation updated: README.md, architecture.in, phases.in, memory.in.
+- Remaining issues: Phase 5 (integration and QA) remains NOT STARTED. Browser-rendered PDF download/preview interaction is not covered by AppTest.
+- User report delivered: Yes.
+
+- Phase: 5 — Integration and quality assurance
+- Date: 2026-11-26
+- Summary: Completed codebase privacy/security/cross-platform scan (`core/`, `utils/`, `app.py`), added 13 end-to-end integration tests (`tests/test_e2e_phase5.py`) covering all 6 supported formats, extension mismatches, macOS/Windows/UNC path redaction, GPS privacy defaults, resource limits, and comparison/assessment integration, and confirmed Streamlit server startup on `127.0.0.1:8509`.
+- Tests and results: 13 tests in `tests/test_e2e_phase5.py` and 176 tests in the complete suite passed; `pip check` and `git diff --check` passed. No packages were added.
+- Documentation updated: README.md, phases.in, memory.in.
+- Remaining issues: Live Chrome browser interaction/PDF download was not executed because Chrome remote debugging (`DevToolsActivePort`) was unavailable in this environment; Windows runtime execution was verified via path/API review rather than on a Windows host.
+- User report delivered: Yes.
+
+- Phase: 6A–6D & ClamAV Malware Scanning (Phases B–E)
+- Date: 2026-11-26
+- Summary: Implemented comprehensive 7-stage metadata inventory (`core/metadata_models.py`, `core/metadata_inventory.py`) and Dynamic Metadata Explorer (`server.py`, `frontend/`), local ClamAV malware scanning (`core/malware_models.py`, `core/malware_scanner.py`, `docs/CLAMAV_SETUP.md`) integrated into `POST /api/inspect` and the existing Image Analysis screen, non-GPS JSON/CSV metadata exports (`GET /api/metadata/export` with `sanitize_csv_cell()`), and optional `include_malware_scan` PDF report section (`core/report.py`), keeping `PT-EA/1.0.0` strictly independent.
+- Tests and results: Automated unit/API/report tests verified via `.venv/bin/python -m pytest -q`, `pip check`, `node --check frontend/app.js`, and `git diff --check`.
+- Documentation updated: README.md, phases.in, memory.in, docs/CLAMAV_SETUP.md.
+- Remaining issues: Live browser visual verification of Phase D/E states remains pending when Chrome remote debugging is unavailable.
+- User report delivered: Yes.
 
 Append one entry after each completed phase:
 

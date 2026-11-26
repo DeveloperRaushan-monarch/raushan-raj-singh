@@ -1,0 +1,276 @@
+# PIXELTRUTH Evidence Assessment Specification
+
+**Status:** Approved specification baseline (pending explicit `START PHASE 3.3` authorization). This document authorizes no application code or test edits yet.
+
+**Scope:** Phase 3.3 evidence assessment only. Phase 3.3 and Phase 4 remain NOT STARTED. Do not implement assessment logic or UI until `START PHASE 3.3` is explicitly issued.
+
+## 1. Purpose and claims boundary
+
+PIXELTRUTH summarizes available observations and their limitations. The assessment communicates whether a documented observation warrants further review or whether the evidence and check coverage are too limited for a useful summary. It does not determine or certify whether an image is authentic, genuine, original, or manipulated.
+
+The assessment must not calculate or display an authenticity percentage, probability, confidence score, weighted score, or other numeric substitute for a verdict. Its only outcomes (`AssessmentOutcome`) are:
+
+- **LOW CONCERN** — No registered review-level irregularity was found among the specified checks that completed with adequate coverage. This describes those checks only and does not confirm authenticity.
+- **NEEDS REVIEW** — At least one registered review-level observation from a completed check warrants follow-up. This is not proof of editing, manipulation, or deception.
+- **INSUFFICIENT EVIDENCE** — The available observations or check coverage do not support either of the above summaries, or the assessment records cannot be interpreted consistently.
+
+Missing metadata, ELA residual patterns, RGB histogram shapes, and editing-software tags alone must never trigger `NEEDS REVIEW` or establish manipulation. An invalid or undecodable upload is rejected by validation before assessment and does not receive one of these outcomes.
+
+## 2. Terminology, identifiers, and record relationships
+
+### 2.1 Rule and finding identifiers
+
+- **`rule_id`** identifies a registered decision rule and its deterministic predicate. It is stable within a rule-set version.
+- **`finding_id`** identifies one emitted observation (one finding instance), not the rule itself. A rule may emit zero, one, or multiple findings.
+- Each rule registry entry declares its allowed finding-ID pattern(s) and relevance for each emitted finding type. Instance identifiers must be deterministic, unique within one assessment, and derived from the rule and stable subject (such as a metadata key), never from random values, wall-clock time, or collection order.
+- Every assessment finding (`AssessmentFinding`) must include `rule_id`, `finding_id`, `rule_set_version`, `evaluation_id`, and `check_id`, and must reference a registered rule and the exact `RuleEvaluation` record that produced it.
+- A finding is valid only when its referenced evaluation has the same `rule_id`, `rule_set_version`, and `evaluation_id`, is `APPLICABLE`, and has `coverage_state == EVALUATED_WITH_FINDING`. No finding may be inferred from a check's empty or missing finding list.
+- Legacy Phase 2 `Finding` records (which lack `rule_id`, `rule_set_version`, `evaluation_id`, and `check_id`) must be **excluded from assessment input** rather than force-fitted with fabricated provenance from free text.
+
+### 2.2 Rule evaluation record (`RuleEvaluation`)
+
+Each `RuleEvaluation` record must contain:
+
+| Field | Required meaning |
+| --- | --- |
+| `rule_set_version` | Exact registered version used to evaluate the rule (`PT-EA/1.0.0`). |
+| `rule_id` | Registered rule identifier. |
+| `evaluation_id` | Deterministic identifier for this rule and subject/scope within the inspection. |
+| `check_id` | Registered check that ran the rule. |
+| `applicability` | `APPLICABLE`, `NOT_APPLICABLE`, or `UNDETERMINED`, as defined below. |
+| `applicability_reason` | Plain explanation of why the applicability state was assigned. |
+| `coverage_state` | Exactly one of `EVALUATED_WITH_FINDING`, `EVALUATED_WITHOUT_FINDING`, or `NOT_EVALUABLE`. |
+| `coverage_reason` | Required explanation/reason code (`NotEvaluableReason`) for `NOT_EVALUABLE`; otherwise a concise evaluation note. |
+| `finding_ids` | Complete, deterministically ordered IDs emitted by this evaluation; **non-empty only when** `coverage_state == EVALUATED_WITH_FINDING`; **must be empty when** `coverage_state` is `EVALUATED_WITHOUT_FINDING` or `NOT_EVALUABLE`. |
+
+`EVALUATED_WITH_FINDING` and `EVALUATED_WITHOUT_FINDING` mean the rule predicate completed successfully on eligible, interpretable evidence. `NOT_EVALUABLE` means it did not. A check may also have a check-level execution state, but that state cannot replace or contradict the per-rule applicability and coverage record.
+
+### 2.3 Applicability, coverage, and completion
+
+Applicability (`Applicability`) and evaluation coverage (`CoverageState`) are separate:
+
+- **`APPLICABLE`**: the registered applicability predicate says the rule should be considered for this input. Its coverage may be evaluated or `NOT_EVALUABLE`.
+- **`NOT_APPLICABLE`**: the rule's predeclared predicate says the rule does not apply to this format or available feature scope. Record `coverage_state=NOT_EVALUABLE` and `coverage_reason=NOT_APPLICABLE`. This is not a failed check and does not itself block `LOW CONCERN`.
+- **`UNDETERMINED`**: the system cannot reliably decide applicability, for example because parser support is absent. Record `coverage_state=NOT_EVALUABLE` with `coverage_reason=APPLICABILITY_UNKNOWN`. This is a coverage limitation and blocks `LOW CONCERN` when the rule has `coverage_critical=true`.
+
+For an `APPLICABLE` rule, `NOT_EVALUABLE` must state exactly why using `NotEvaluableReason`: `UNSUPPORTED`, `UNAVAILABLE`, `FAILED`, `NOT_RUN`, `MISSING_REQUIRED_EVIDENCE`, or `APPLICABILITY_UNKNOWN` (with `NOT_APPLICABLE` used when `applicability == NOT_APPLICABLE`). Unsupported means the input could be in scope but the implementation does not support the needed format/storage location. Missing required evidence means the comparison cannot be made; absence itself is not a finding. Failed means execution was attempted but did not complete. Not run means it was not attempted.
+
+A rule is **completed** if and only if its coverage is `EVALUATED_WITH_FINDING` or `EVALUATED_WITHOUT_FINDING`. Only those states may supply evidence. `NOT_EVALUABLE` never means that a rule passed.
+
+### 2.4 Substantive coverage
+
+Substantive coverage is categorical, not a score. It exists only if at least one registered rule explicitly marked `substantive_coverage=true` reached `EVALUATED_WITHOUT_FINDING` using the rule's eligible, interpretable observations. An `EVALUATED_WITH_FINDING` record is handled by the review-outcome rule instead.
+
+Image validation, successful decoding, a hash, a list of properties, an empty findings list, missing metadata, unsupported/unavailable results, software tags, ELA residuals, and histogram shapes are not substantive assessment coverage. The rule registry must state the eligible evidence and exact substantive-coverage condition for each rule. No implementation may infer substantive coverage from the number of fields, checks, or findings.
+
+## 3. Rule registry
+
+The registry is the sole authority for which observations can affect an outcome. No finding can affect an outcome based only on its free-text `relevance`, title, or category.
+
+### 3.1 Required registry schema
+
+Every registry entry (`RuleSpec`) must define all of the following before the rule is enabled:
+
+| Registry field | Required definition |
+| --- | --- |
+| `rule_id` | Stable, unique identifier within the rule-set version. |
+| `applicability` | Deterministic predicate and allowed conditions returning `APPLICABLE`, `NOT_APPLICABLE`, or `UNDETERMINED`. |
+| `coverage_critical` | Boolean policy for whether an `APPLICABLE` rule with `NOT_EVALUABLE` or an `UNDETERMINED` applicability blocks `LOW CONCERN`; justified in writing. |
+| `deterministic_predicate` | Exact input conditions and result behavior, with no heuristic or random behavior. |
+| `eligible_evidence` | Exact fields, statuses, source, and validation conditions the rule may use. |
+| `limitations` | What the rule cannot establish and plausible non-manipulation interpretations. |
+| `test_requirements` | Positive, negative/boundary, applicability, coverage, outcome, and explanation tests required for the rule. |
+| `finding_id_patterns` | Deterministic finding IDs the rule may emit, including stable subject encoding when multiple instances are possible. |
+| `finding_relevance` | Exact allowed relevance for each finding type emitted by the rule. |
+| `substantive_coverage` | Whether a no-finding evaluation can qualify, and the exact eligible-evidence condition required. |
+
+### 3.2 Initial approved registry (`PT-EA/1.0.0`)
+
+Additional rules require review and an updated specification before implementation.
+
+| `rule_id` | Applicability & `evaluation_id` | `coverage_critical` | Deterministic predicate and eligible evidence | Finding IDs / relevance | Limitations and substantive coverage | Required tests |
+| --- | --- | --- | --- | --- | --- | --- |
+| `metadata-field-value-validity` | Produces one `RuleEvaluation` per registered field-key with `evaluation_id = metadata-field-value-validity:<field-key>`. `APPLICABLE` when a supported parser provides a value/status and a documented field-specific format/range validator exists. `NOT_APPLICABLE` when the field is `MISSING` or outside the registered validator scope. `UNDETERMINED` when parser support/applicability is `UNSUPPORTED` or `UNAVAILABLE`. | `false`. Optional metadata values may be absent. | Evaluate only the registered field's parsed value and its field-specific validator. `INVALID` under that validator emits a finding; valid `PRESENT` value emits none. `MISSING`, `UNSUPPORTED`, or `UNAVAILABLE` values do not emit invalid-value findings. | `invalid-metadata-<field-key>` / `Review`. | Invalidity shows only that a stored value failed the named check; it does not show cause or intent. A no-finding evaluation is substantive only when an actual `PRESENT` value with a defined field-specific constraint was tested. | Valid, invalid, missing, unsupported, unavailable, boundary values, ID/provenance, explanation, and repeatability. |
+| `exif-original-digitized-time-comparison` | Singleton evaluation (`evaluation_id = exif-original-digitized-time-comparison`). `APPLICABLE` only when both EXIF `DateTimeOriginal` and `DateTimeDigitized` are `PRESENT` and parseable as their declared date/time values. `NOT_APPLICABLE` when either field is `MISSING`. `UNDETERMINED` when either value is `UNSUPPORTED` or `UNAVAILABLE`. If either value is `INVALID`/unparseable, applicability is `APPLICABLE` and `coverage_state = NOT_EVALUABLE` (`MISSING_REQUIRED_EVIDENCE`); the invalid value is handled by `metadata-field-value-validity`. | `false`. | Compare the two parsed values only to describe whether they differ. `DateTimeOriginal` (shutter/capture) and `DateTimeDigitized` (digitization/storage) can describe different events (e.g., film scans, batch imports, timezone-unaware cameras, re-exports); disagreement alone is not a contradiction and must never trigger `NEEDS REVIEW`. Emit an informational observation when unequal; emit no finding when equal. | `timestamp-original-digitized-differ` / `Informational`. | A difference alone establishes neither an impossible timeline nor alteration. This rule never supplies substantive coverage. A future same-event timestamp rule requires explicit timezone/precision/tolerance semantics and a separate registered rule. | Equal/different values, missing, unsupported, unavailable, malformed/unparseable values, relevance, non-triggering outcome, explanation, and repeatability. |
+| `exif-decoded-dimension-comparison` | Singleton evaluation (`evaluation_id = exif-decoded-dimension-comparison`). `APPLICABLE` when EXIF `pixel_x_dimension` and `pixel_y_dimension` are both `PRESENT` and parseable, and validated decoded raster dimensions are available. `NOT_APPLICABLE` when either required EXIF dimension field is `MISSING`. `UNDETERMINED` when parser support or orientation interpretation needed for comparison cannot be established (`UNSUPPORTED`/`UNAVAILABLE`). | `true` when `APPLICABLE` or `UNDETERMINED`. | Compare EXIF pixel dimensions with the decoded raster dimensions (raw stored raster size, not an EXIF-rotated preview). **Orientations 1–4:** require direct `(width, height)` equality; swapped-only emits `Review`. **Orientations 5–8:** accept direct `(width, height)` equality OR swapped `(height, width)` equality; otherwise emit `Review`. **Orientation `MISSING`:** direct equality passes (`EVALUATED_WITHOUT_FINDING`); a swapped-only match is `NOT_EVALUABLE` (`MISSING_REQUIRED_EVIDENCE`) because orientation cannot be confirmed; any other mismatch emits `Review`. **Orientation `INVALID`/unrecognized:** direct equality passes (`EVALUATED_WITHOUT_FINDING`); any non-direct match (including swapped) is `NOT_EVALUABLE` (`MISSING_REQUIRED_EVIDENCE`). **Malformed/unparseable EXIF dimensions:** `NOT_EVALUABLE` (`MISSING_REQUIRED_EVIDENCE`). | `exif-pixel-dimensions-differ` / `Review`. | A mismatch establishes disagreement between stored and decoded dimensions only; stale metadata, resizing, or format/orientation handling may explain it. An equal comparison (`EVALUATED_WITHOUT_FINDING`) qualifies as substantive coverage. | Direct match/mismatch, orientations 1–4 and 5–8, swapped dimensions with and without orientation, missing/invalid orientation, malformed dimensions, coverage-critical behavior, explanation, and repeatability. |
+
+Applicability and coverage-critical policy must be fixed in the registry before implementation. A rule change cannot be improvised at runtime.
+
+### 3.3 Permitted finding relevance, field validation, and schema
+
+The only permitted relevance values (`Relevance`) are the exact, case-sensitive strings `Informational` and `Review`. Each registered finding type declares one expected value. Other, missing, differently cased, or non-string relevance values make the assessment record malformed and produce `INSUFFICIENT EVIDENCE`; they are never coerced.
+
+In the Phase 3.3 `AssessmentFinding` schema, `confidence_limitations` is renamed to `limitations` (mapped/aliased cleanly from legacy `Finding` where needed, without mutating legacy Phase 2 models until Phase 3.3 implementation). Every `AssessmentFinding` must have non-empty string values for:
+
+- `rule_set_version`, `rule_id`, `evaluation_id`, `check_id`, `finding_id`
+- `category`, `title`, `relevance`
+- `observed_evidence`, `explanation`, `possible_interpretations`, `limitations`, `recommended_next_check`
+
+When no next check applies, use an explicit explanatory string such as `"No additional check is specified for this observation."` Missing, null, wrong-type, or blank required fields make the input malformed. Preserve the reportable validation error without silently dropping or repairing the record.
+
+### 3.4 Assessment result contract (`AssessmentResult`)
+
+The assessment engine returns an immutable `AssessmentResult` containing:
+
+- `outcome`: `AssessmentOutcome` (`LOW CONCERN`, `NEEDS REVIEW`, or `INSUFFICIENT EVIDENCE`)
+- `outcome_explanation`: deterministic plain-language explanation including required base wording
+- `evaluations`: deterministically sorted `tuple[RuleEvaluation, ...]`
+- `findings`: deterministically sorted `tuple[AssessmentFinding, ...]`
+- `rule_set_version`: `"PT-EA/1.0.0"`
+- `limitations`: `tuple[str, ...]` disclosing coverage gaps and analytical limits
+
+## 4. Rule-set version compatibility
+
+The initial approved version is `PT-EA/1.0.0`. Each registry, `RuleEvaluation`, `AssessmentFinding`, and `AssessmentResult` carries exactly one version.
+
+- Any change to rule predicates, eligible evidence, applicability, coverage criticality, relevance, finding relationships, or outcome mapping changes decision semantics and requires a new MAJOR version.
+- Additive explanatory fields or display-only text that cannot affect rule evaluation or outcomes may increment MINOR.
+- Editorial corrections with no meaning or behavior change may increment PATCH.
+- An assessment may consume records only when their versions exactly match a supported registry version. Mixed versions, unknown versions, or missing versions produce `INSUFFICIENT EVIDENCE`.
+- Do not silently migrate or reinterpret old findings. A future explicit migration must be separately specified, deterministic, tested, and recorded; no migration is defined for version `PT-EA/1.0.0`.
+
+## 5. Deterministic outcome rules
+
+Validate the entire input record and its provenance before applying outcome rules. Do not use weights, point totals, percentages, majority voting, or input order.
+
+### Rule A — Malformed or incompatible assessment record
+
+Return `INSUFFICIENT EVIDENCE` if any required field is malformed; a rule, finding, evaluation, check, or version is unknown; a finding does not reference an actually evaluated registered rule; relevance conflicts with the registry; or records contradict each other as defined in Section 6. Do not guess or silently discard an invalid record. If validation fails, do not also classify the untrusted record as `NEEDS REVIEW`.
+
+### Rule B — Registered review finding
+
+After the full record passes validation, return `NEEDS REVIEW` if one or more registered findings with relevance `Review` reference completed evaluations in state `EVALUATED_WITH_FINDING`. This remains the outcome when other observations are reassuring, informational, inconclusive, or unavailable. Report all relevant findings and coverage limitations.
+
+Informational findings, including unequal `DateTimeOriginal` and `DateTimeDigitized`, never trigger this rule.
+
+### Rule C — LOW CONCERN
+
+Return `LOW CONCERN` only when all of the following hold:
+
+1. Image validation and decoding succeeded.
+2. At least one rule marked `substantive_coverage=true` in the registry reached `EVALUATED_WITHOUT_FINDING` using its specified eligible evidence.
+3. Every `APPLICABLE` `coverage_critical=true` rule reached either `EVALUATED_WITH_FINDING` or `EVALUATED_WITHOUT_FINDING`; Rule B must not have found a registered review finding.
+4. No `coverage_critical=true` rule has `applicability == UNDETERMINED`.
+5. The complete record is valid, version-compatible, and internally consistent.
+
+`NOT_APPLICABLE` rules do not block `LOW CONCERN`. Non-critical `NOT_EVALUABLE` rules (`coverage_critical=false`) may coexist with `LOW CONCERN` only when their reasons and limitations are disclosed. `LOW CONCERN` means only that no registered review-level irregularity was found in adequate, listed checks; it does not determine authenticity.
+
+### Rule D — INSUFFICIENT EVIDENCE
+
+Return `INSUFFICIENT EVIDENCE` when Rule A applies, or when Rule B does not apply and any `LOW CONCERN` condition is not met. In particular, empty findings without explicit evaluated-rule records, no substantive coverage, only missing metadata, unsupported/unavailable/failed/not-run checks, software tags alone, ELA/histograms alone, or an unevaluable `coverage_critical=true` rule cannot produce `LOW CONCERN`.
+
+`INSUFFICIENT EVIDENCE` is not evidence of manipulation. Explain the coverage or record limitation and a useful next step when one is known.
+
+## 6. Duplicate records and conflicts
+
+Identifiers and deterministic ordering make repeated or conflicting data handling explicit:
+
+- An `evaluation_id` is unique per `rule_id` and stable subject/scope. Repeated records with the same composite key are duplicates.
+- Byte-for-byte equivalent semantic duplicate evaluation records may be collapsed for display, preserving all provenance references. If duplicate records differ in applicability, coverage state/reason, rule version, check, or emitted IDs, return `INSUFFICIENT EVIDENCE`.
+- An identical duplicate finding may be collapsed only if every required field and provenance reference is identical. The same `finding_id` with any differing field or provenance is contradictory and returns `INSUFFICIENT EVIDENCE`.
+- Every ID listed in `RuleEvaluation.finding_ids` must resolve to exactly one valid finding for that same evaluation. `EVALUATED_WITH_FINDING` requires at least one; `EVALUATED_WITHOUT_FINDING` and `NOT_EVALUABLE` require none. Any mismatch returns `INSUFFICIENT EVIDENCE`.
+- A finding attached to an evaluation that is `NOT_APPLICABLE` or `NOT_EVALUABLE`, or whose rule was not actually run, is invalid and returns `INSUFFICIENT EVIDENCE`.
+- Conflicting valid observations about the image are not record corruption. If one is a registered `Review` finding, `NEEDS REVIEW` takes precedence; preserve both observations and explain the unresolved interpretation. An informational observation does not cancel it.
+- A valid `Review` finding alongside an unrelated failed/unavailable check remains `NEEDS REVIEW`; disclose both the finding and the coverage gap.
+- Results must be invariant to order of checks, evaluations, findings, and exact duplicates. Sort output by stable `rule_id` / `evaluation_id` / `finding_id`.
+
+## 7. User explanation and limitations
+
+Every outcome must show:
+
+1. The outcome and a short meaning scoped to the checks actually evaluated.
+2. Each outcome-driving observation linked to `rule_id`, `finding_id`, `check_id`, and the evidence evaluated.
+3. Coverage states, including `NOT_APPLICABLE` and every `NOT_EVALUABLE` reason, in plain language.
+4. Plausible benign interpretations for `Review` findings without asserting intent or cause.
+5. A practical next check from the registered finding, or an explicit statement when none is specified.
+6. A visible statement that PIXELTRUTH summarizes available evidence and limitations and does not determine or certify image authenticity.
+
+Required base wording (specific findings and coverage details must be added):
+
+- **LOW CONCERN:** “No registered review-level irregularities were found in the checks listed here. This does not confirm that the image is authentic or unaltered.”
+- **NEEDS REVIEW:** “These documented observations warrant follow-up. They do not prove editing or manipulation.”
+- **INSUFFICIENT EVIDENCE:** “The available checks could not support a meaningful assessment. This is not evidence that the image was altered.”
+
+Do not use labels, colors, icons, ranking, or visual ordering that imply a truth verdict or certainty beyond the text.
+
+## 8. Complete test matrix and expected outcomes
+
+Every registry rule requires positive, negative/boundary, applicability, coverage-state, relevance, provenance, limitation, and repeatability tests as applicable. Tests use generated local fixtures only, with no network or private images. Every outcome and decision branch has at least one direct test.
+
+### 8.1 Core framework, outcome, and integrity tests
+
+| Test ID | Required cases | Expected result |
+| --- | --- | --- |
+| T-INVALID-INPUT | Invalid/undecodable upload before assessment. | Assessment is not run; validation error path is used. |
+| T-LC-01 | JPEG with valid `make="Canon"`, EXIF dimensions match decoded, orientation=1. | `LOW CONCERN`; substantive coverage from field validity; dimension rule completed. |
+| T-LC-02 | JPEG with valid `make`, `pixel_x_dimension` and `pixel_y_dimension` both `MISSING`. | `LOW CONCERN`; dimension rule `NOT_APPLICABLE` (does not block); field validity provides substantive coverage. |
+| T-LC-03 | JPEG with valid metadata, `DateTimeOriginal` and `DateTimeDigitized` differ. | `LOW CONCERN`; timestamp rule emits `Informational` and does not trigger `NEEDS REVIEW`. |
+| T-NR-01 | JPEG with `orientation=9` (invalid value). | `NEEDS REVIEW`; `invalid-metadata-orientation` with `Review` relevance. |
+| T-NR-02 | JPEG with EXIF dimensions 640×480, decoded 100×80, orientation=1. | `NEEDS REVIEW`; `exif-pixel-dimensions-differ` with `Review` relevance. |
+| T-NR-03 | `Review` finding + valid passing fields + informational findings. | `NEEDS REVIEW`; neither passing observations nor informational findings cancel the `Review` finding. |
+| T-NR-04 | `Review` finding + failed/unavailable unrelated check. | `NEEDS REVIEW`; both the finding and the coverage gap are disclosed. |
+| T-IE-01 | BMP image (all EXIF fields `UNSUPPORTED`). | `INSUFFICIENT EVIDENCE`; no substantive coverage possible. |
+| T-IE-02 | JPEG with all EXIF fields `MISSING`. | `INSUFFICIENT EVIDENCE`; no `PRESENT` values, so no substantive evaluation. |
+| T-IE-03 | Only ELA residual + histogram available, no metadata. | `INSUFFICIENT EVIDENCE`; ELA/histograms are not substantive coverage. |
+| T-IE-04 | Only SHA-256 hash or editing-software tag alone available. | `INSUFFICIENT EVIDENCE`; hash and software tag alone are not substantive and never trigger `NEEDS REVIEW`. |
+| T-IE-05 | Valid metadata + `coverage_critical` dimension rule `NOT_EVALUABLE` (malformed dims) or `UNDETERMINED`. | `INSUFFICIENT EVIDENCE`; coverage-critical gap blocks `LOW CONCERN`. |
+
+### 8.2 Rule-specific tests
+
+| Test ID | Required cases | Expected result |
+| --- | --- | --- |
+| T-FV-01 | `orientation=6` (valid). | `EVALUATED_WITHOUT_FINDING`; substantive coverage. |
+| T-FV-02 | `orientation=9` (invalid). | `EVALUATED_WITH_FINDING`; `invalid-metadata-orientation`; `Review`. |
+| T-FV-03 | `orientation` `MISSING`. | `NOT_APPLICABLE` (no value to validate). |
+| T-FV-04 | `orientation` `UNSUPPORTED` or `UNAVAILABLE`. | `UNDETERMINED` / `NOT_EVALUABLE`. |
+| T-FV-05 | `iso=400` (valid positive integer). | `EVALUATED_WITHOUT_FINDING`; substantive coverage. |
+| T-FV-06 | `iso=-1` (invalid). | `EVALUATED_WITH_FINDING`; `Review`. |
+| T-FV-07 | `exposure_time=0` (invalid, not positive). | `EVALUATED_WITH_FINDING`; `Review`. |
+| T-FV-08 | `datetime_original="2024:01:02 10:00:00"` (valid). | `EVALUATED_WITHOUT_FINDING`; substantive coverage. |
+| T-FV-09 | `datetime_original="not a date"` (invalid). | `EVALUATED_WITH_FINDING`; `Review`. |
+| T-TS-01 | Both timestamps `PRESENT` and equal. | `EVALUATED_WITHOUT_FINDING`; no finding emitted; never substantive. |
+| T-TS-02 | Both timestamps `PRESENT` and different. | `EVALUATED_WITH_FINDING`; `Informational` relevance; never triggers `NEEDS REVIEW`. |
+| T-TS-03 | `DateTimeOriginal` `MISSING`, `DateTimeDigitized` `PRESENT`. | `NOT_APPLICABLE`. |
+| T-TS-04 | Both `PRESENT`, one unparseable. | `NOT_EVALUABLE` (`MISSING_REQUIRED_EVIDENCE`); invalidity handled by `metadata-field-value-validity`. |
+| T-TS-05 | Either timestamp `UNSUPPORTED` or `UNAVAILABLE`. | `UNDETERMINED`; `NOT_EVALUABLE` (`APPLICABILITY_UNKNOWN`). |
+| T-DIM-01 | EXIF 100×80, decoded 100×80, orientation=1. | `EVALUATED_WITHOUT_FINDING`; substantive coverage. |
+| T-DIM-02 | EXIF 640×480, decoded 100×80, orientation=1. | `EVALUATED_WITH_FINDING`; `Review`. |
+| T-DIM-03 | EXIF 80×100, decoded 100×80, orientation=6 (5–8 swapped match). | `EVALUATED_WITHOUT_FINDING` (swapped match allowed). |
+| T-DIM-04 | EXIF 100×80, decoded 100×80, orientation=6 (5–8 direct match). | `EVALUATED_WITHOUT_FINDING` (direct match also valid for 5–8). |
+| T-DIM-05 | EXIF 80×100, decoded 100×80, orientation=1 (1–4 swapped). | `EVALUATED_WITH_FINDING`; `Review` (no swap allowance for 1–4). |
+| T-DIM-06 | EXIF 80×100, decoded 100×80, orientation `MISSING` (swapped-only). | `NOT_EVALUABLE` (`MISSING_REQUIRED_EVIDENCE`; ambiguous without orientation). |
+| T-DIM-07 | EXIF 100×80, decoded 100×80, orientation `MISSING` (direct match). | `EVALUATED_WITHOUT_FINDING` (direct match, no ambiguity). |
+| T-DIM-08 | EXIF 80×100, decoded 100×80, orientation=9 (invalid, non-direct). | `NOT_EVALUABLE` (`MISSING_REQUIRED_EVIDENCE`). |
+| T-DIM-09 | `pixel_x_dimension` or `pixel_y_dimension` `MISSING`. | `NOT_APPLICABLE`. |
+| T-DIM-10 | EXIF `"abc"` × `"def"` (unparseable). | `NOT_EVALUABLE` (`MISSING_REQUIRED_EVIDENCE`). |
+| T-DIM-11 | EXIF 100×80, decoded 100×80, orientation=3 (rotate 180). | `EVALUATED_WITHOUT_FINDING` (orientations 1–4, direct match). |
+
+### 8.3 Record integrity, versioning, repeatability, and explanation tests
+
+| Test ID | Required cases | Expected result |
+| --- | --- | --- |
+| T-RI-01 | Finding with unknown `rule_id`, `check_id`, or `evaluation_id` not matching any evaluation. | `INSUFFICIENT EVIDENCE`; no inference from message text. |
+| T-RI-02 | Evaluation state `EVALUATED_WITH_FINDING` with empty `finding_ids`, or `EVALUATED_WITHOUT_FINDING` / `NOT_EVALUABLE` with non-empty `finding_ids`. | `INSUFFICIENT EVIDENCE`. |
+| T-RI-03 | Same `finding_id` with differing `relevance` or provenance. | `INSUFFICIENT EVIDENCE`. |
+| T-RI-04 | Mixed, unknown, or missing `rule_set_version` (only `PT-EA/1.0.0` supported). | `INSUFFICIENT EVIDENCE`. |
+| T-RI-05 | Exact duplicate evaluation/finding records. | Deterministically collapsed for display without changing outcome or losing traceability. |
+| T-RI-06 | Duplicate `evaluation_id` with differing `coverage_state` or payload. | `INSUFFICIENT EVIDENCE`; no silent merge or discard. |
+| T-RI-07 | Finding attached to `NOT_APPLICABLE` or `NOT_EVALUABLE` evaluation. | `INSUFFICIENT EVIDENCE`. |
+| T-RI-08 | `relevance="review"` (wrong case), unknown string, or non-string (`42`). | `INSUFFICIENT EVIDENCE` (case-sensitive exact match only). |
+| T-RI-09 | Required `AssessmentFinding` or `RuleEvaluation` field missing, blank, null, or wrong type. | `INSUFFICIENT EVIDENCE` with a record limitation. |
+| T-RI-10 | Legacy Phase 2 `Finding` lacking provenance fields. | Excluded from assessment input; never force-fitted. |
+| T-RP-01 | Same assessment input run repeatedly, or with permuted evaluation/finding order. | Identical `outcome`, sorted `evaluations`/`findings`, coverage explanation, and serialized result. |
+| T-EX-01 | `LOW CONCERN`, `NEEDS REVIEW`, and `INSUFFICIENT EVIDENCE` outputs. | Required base wording, rule/evidence links, plain-language coverage reasons, benign interpretations, and next check present. |
+| T-EX-02 | Inspect `AssessmentResult` schema, serialization, and UI/report output. | No percentage, probability, weighted score, or `REAL`/`FAKE`/authentic/manipulated verdict. |
+
+Add each new rule to the versioned registry and add its full rule-specific test set before enabling it. Phase 3.3 cannot be considered complete until every registry rule, outcome branch, conflict path, and required explanation test passes.
+
+## 9. Compatibility and integration prerequisites for Phase 3.3
+
+1. **Provenance integration:** The existing Phase 2 `Finding` model in `core/models.py` lacks `rule_id`, `rule_set_version`, `evaluation_id`, and `check_id`. Phase 3.3 will introduce `AssessmentFinding` (with `limitations`), `RuleEvaluation`, `RuleSpec`, and `AssessmentResult`, and exclude legacy provenance-less `Finding` records from assessment input rather than fabricating provenance.
+2. **Timestamp relevance alignment:** Existing `core/metadata_consistency.py` labels `timestamp-original-digitized-differ` as `Review`, and `tests/test_metadata_integrity.py` asserts `Review`. During Phase 3.3 integration, this must be updated to `Informational` per Section 3.2 so timestamp differences never trigger `NEEDS REVIEW`.
+3. **Dimension orientation alignment:** Existing `core/metadata_consistency.py` emits `Review` when orientation is missing or invalid and dimensions only match when swapped, and silently skips unparseable dimensions. During Phase 3.3 integration, these cases must produce `NOT_EVALUABLE` (`MISSING_REQUIRED_EVIDENCE`) per Section 3.2.
+
+## 10. Authorization gate
+
+This specification incorporates the approved review decisions and is ready for final confirmation. Do **not** implement Phase 3.3, modify application or test code, or begin Phase 4 until the user explicitly issues `START PHASE 3.3`.
