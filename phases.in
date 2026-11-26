@@ -7,7 +7,7 @@ Use NOT STARTED, IN PROGRESS, BLOCKED, or COMPLETE. A phase is COMPLETE only whe
 ## Current status
 
 - Phase 0 — COMPLETE (2026-11-25). The user explicitly authorized a greenfield foundation. Python 3.11.0 was confirmed; the existing project-local environment was verified; the requested scaffold, documentation, starter Streamlit entry point, README, license notice, and gitignore were created; and local main/develop branches were prepared without a remote. No forensic features were implemented. See memory.in for environment details.
-- Phase 1 — NOT STARTED.
+- Phase 1 — COMPLETE (2026-11-25). Implemented content-based upload validation, bounded decoding, image properties, common EXIF fields/statuses, SHA-256, and a working single-image Streamlit inspection view. Verified with 23 passing Pytest cases and a localhost Streamlit health check. XMP/IPTC parsing remains explicitly unsupported; GPS, integrity findings, comparison, ELA, histograms, assessment, and PDF reports remain for later phases.
 - Phase 2 — NOT STARTED.
 - Phase 3 — NOT STARTED.
 - Phase 4 — NOT STARTED.
@@ -71,6 +71,14 @@ Tasks: integration; macOS/Windows checks; privacy and security review; performan
 Exit criteria: end-to-end supported workflows function; relevant test suite passes; platform-specific issues are resolved or documented; privacy defaults are verified; documentation and known limitations are current; final report is delivered.
 
 ## Phase completion record
+
+- Phase: 1 — Image inspection foundation
+- Date: 2026-11-25
+- Summary: Added bounded content-based validation and a one-image inspection workflow for supported file properties, common EXIF fields/statuses, and original-byte SHA-256.
+- Tests and results: 23 passed; Streamlit localhost health check passed.
+- Documentation updated: README.md, architecture.in, phases.in, memory.in.
+- Remaining issues: XMP/IPTC parsing is unsupported; phases 2–5 remain.
+- User report delivered: Yes.
 
 Append one entry after each completed phase:
 

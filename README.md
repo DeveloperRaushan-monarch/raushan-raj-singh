@@ -4,7 +4,7 @@ PIXELTRUTH is planned as a local-first image metadata inspection and digital for
 
 ## Project status
 
-The repository currently contains the Phase 0 foundation only. The Streamlit entry point confirms the setup; image upload, metadata extraction, forensic analysis, assessments, and reports have not been implemented.
+Phase 1 is complete. The app accepts one image per session, validates content and decoding, reports image properties and common EXIF fields, and calculates SHA-256. Metadata integrity findings, GPS disclosure, comparison, ELA, histograms, assessment, and PDF reports remain for later authorized phases. XMP/IPTC parsing is explicitly reported as unsupported in this phase.
 
 Read the project specifications before starting development:
 
@@ -54,17 +54,17 @@ After dependencies are installed and the environment is active:
 streamlit run app.py
 ```
 
-The current app is only a setup page. It does not accept or analyze images yet.
+The current app supports the Phase 1 inspection workflow only.
 
 ## Project structure
 
 ```text
 app.py
 pages/             Streamlit page entry points (to be added in authorized phases)
-core/              Image analysis and assessment modules (not implemented)
+core/              Phase 1 image properties, metadata, hashing, models, and orchestration
 components/         Reusable interface components (not implemented)
-utils/              Shared validation and formatting utilities (not implemented)
-tests/              Automated tests (not implemented)
+utils/              Shared validation and formatting utilities
+tests/              Phase 1 validation, property, metadata, hash, and orchestration tests
 assets/             Local interface assets
 sample_images/      Synthetic, non-sensitive test images only
 ```

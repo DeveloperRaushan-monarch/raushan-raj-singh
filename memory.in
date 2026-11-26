@@ -25,10 +25,13 @@ PIXELTRUTH is a local-first Python 3.11 + Streamlit image metadata inspection an
 - The local Git repository has main and develop branches, with no remote configured. The .gitignore excludes .venv, caches, secrets, generated outputs, and sample image contents.
 - The related Stitch exports were found in a sibling Desktop folder, not inside this workspace. design.in was created from those design references in the previous user-authorized task.
 - The initial documentation set was created from the supplied master prompt and design.in. Phase 0 is complete; see phases.in.
+- Phase 1 is complete on develop. Implemented core/models.py, core/hashing.py, core/image_info.py, core/metadata.py, core/analysis.py, utils/validators.py, the single-image Streamlit inspection view, and Phase 1 tests.
+- Phase 1 verification: 23 Pytest tests passed; pip check reports no broken requirements; local Streamlit health endpoint returned 200. No packages were installed during Phase 1.
+- Current limits: XMP/IPTC parsing is marked Unsupported; GPS data is not exposed; integrity findings, comparison, ELA, histograms, assessment, and PDF output are not implemented yet.
 
 ## Next required context
 
-Next phase: wait for explicit START PHASE 1 authorization before implementing image upload, validation, properties, metadata extraction, or hashing. Do not infer feature completion from the Phase 0 app shell.
+Next phase: wait for explicit START PHASE 2 authorization before implementing metadata integrity rules, GPS disclosure, or two-image comparison. Do not infer those features from the Phase 1 inspection view.
 
 ## Update rule
 
